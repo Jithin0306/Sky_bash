@@ -283,4 +283,19 @@ export const OBJECTS_CONFIG = {
     footprintRadius: 24,
     propHeight: 42,
   },
+
+  BOMB: {
+    type: "bomb",
+    label: "Sky Fuse Bomb",
+    mass: 0.85,
+    friction: 580,
+    bounce: 0.30,
+    throwForce: 310,
+    damage: 65,
+    footprintRadius: 17,
+    propHeight: 32,
+    fuseDuration: 3.5,
+    blastRadius: 145,
+    blastForce: 680,
+  },
 };

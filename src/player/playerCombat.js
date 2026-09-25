@@ -136,7 +136,7 @@ export function findNearestPickupCandidate(player) {
     player.pos.y + player.facing.y * 12 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
   for (const obj of candidates) {
-    if (obj.isCarried || obj.isFallingInVoid) continue;
+    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown) continue;
 
     // Must be within reachable vertical height
     if (Math.abs((obj.zHeight || 0) - player.zHeight) > 48) continue;
@@ -174,6 +174,11 @@ export function pickupObject(player, obj) {
   obj.velocity = vec2(0, 0);
   obj.velZ = 0;
   obj.isGrounded = false;
+
+  // Phase 9: Picking up a Bomb automatically ignites its 3.5s fuse!
+  if (typeof obj.ignite === "function") {
+    obj.ignite();
+  }
 
   // Spawn a snappy cyan/gold pickup ring VFX
   spawnPickupVFX(player.pos.x, player.pos.y, player.zHeight + 24, "GRAB!");

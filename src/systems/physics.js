@@ -18,6 +18,7 @@ import {
 import { getArenaDistance, isPointOnArena } from "../scenes/arena.js";
 import { updateDepthSort } from "./depthSort.js";
 import { spawnHitImpactVFX } from "../player/playerCombat.js";
+import { updateBombSystem } from "../objects/bomb.js";
 
 /**
  * Steps the entire 2.5D object physics simulation for the current frame.
@@ -34,6 +35,9 @@ export function updatePhysicsSystem(
   camera = null
 ) {
   const delta = dt();
+
+  // 0. Phase 9: Step Bomb fuses, radial explosions, & chain-reaction detonations!
+  updateBombSystem(player, objects, props, camera);
 
   // 1. Update each individual object's motion, gravity, bounce, & cliff fall
   for (const obj of objects) {
@@ -60,8 +64,8 @@ export function updatePhysicsSystem(
  * Updates a single physics object's velocity, bounce, rolling angle, and ground state.
  */
 function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
-  // If carried in a player's hands (Milestone 7), skip normal floor physics
-  if (obj.isCarried) {
+  // If carried in a player's hands (Phase 7) or cooling down after exploding (Phase 9), skip floor physics
+  if (obj.isCarried || obj.isExplodedCooldown) {
     return;
   }
 
@@ -176,11 +180,11 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
 function resolveObjectToObjectCollisions(objects, camera = null) {
   for (let i = 0; i < objects.length; i++) {
     const a = objects[i];
-    if (a.isCarried || a.isFallingInVoid) continue;
+    if (a.isCarried || a.isFallingInVoid || a.isExplodedCooldown) continue;
 
     for (let j = i + 1; j < objects.length; j++) {
       const b = objects[j];
-      if (b.isCarried || b.isFallingInVoid) continue;
+      if (b.isCarried || b.isFallingInVoid || b.isExplodedCooldown) continue;
 
       // Check vertical height (zHeight) overlap
       if (
@@ -285,7 +289,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
   if (!props || props.length === 0) return;
 
   for (const obj of objects) {
-    if (obj.isCarried || obj.isFallingInVoid) continue;
+    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown) continue;
 
     for (const prop of props) {
       if (prop.isFallingInVoid) continue;

@@ -34,6 +34,7 @@ import { updatePhysicsSystem } from "../systems/physics.js";
 import { createCrate } from "../objects/crate.js";
 import { createBall } from "../objects/ball.js";
 import { createHeavyBox } from "../objects/heavyBox.js";
+import { createBomb } from "../objects/bomb.js";
 
 /**
  * Converts a 2D screen/floor coordinate (x, y) into its true 2.5D radial distance
@@ -41,7 +42,7 @@ import { createHeavyBox } from "../objects/heavyBox.js";
  *
  * @param {number} x - World X coordinate on the ground plane
  * @param {number} y - World Y coordinate on the ground plane
- * @returns {number} Distance in un-compressed arena units (0 = center, 355 = edge)
+ * @returns {number} Distance in un-compressed arena units (0 = center, 495 = edge)
  */
 export function getArenaDistance(x, y) {
   const dx = x - ARENA_CONFIG.CENTER_X;
@@ -80,7 +81,7 @@ export function registerArenaScene() {
     // 5. Spawn 2.5D Depth-Sorted & Punchable Arena Totems + Sparring Dummy
     const props = createDepthTestProps();
 
-    // 6. Milestone 6: Spawn 2.5D Physics Objects (Crates, Rolling Balls, Heavy Box)
+    // 6. Phase 6 & 9: Spawn 2.5D Physics Objects (Crates, Balls, Heavy Box, & Fuse Bombs!)
     const physicsObjects = spawnArenaPhysicsObjects();
 
     // Press R anytime to drop all physics objects fresh from the sky!
@@ -90,14 +91,25 @@ export function registerArenaScene() {
       }
     });
 
+    // Phase 9: Press B anytime to ignite all Bombs on the court for instant blast testing!
+    onKeyPress("b", () => {
+      for (const obj of physicsObjects) {
+        if (obj.objectType === "bomb") {
+          if (obj.isExplodedCooldown) {
+            obj.respawnFromSky();
+          }
+          obj.ignite();
+        }
+      }
+    });
+
     // 7. Connect local keyboard/mouse input, 2.5D physics engine, & camera each frame
     onUpdate(() => {
       const inputState = readLocalPlayerInput();
       player.setInput(inputState);
 
       // Step the 2.5D Physics Engine (gravity, bounce, rolling, mass collisions,
-      // and solid collisions against the Crystal Orb Stands & Sparring Dummy!)
-      // Note: Inanimate objects (Crates, Balls, Heavy Boxes) do NOT say "KO!" when falling!
+      // Bomb fuse countdowns & radial explosions, and solid Orb Stand collisions!)
       updatePhysicsSystem(player, physicsObjects, props, camera);
 
       resolvePropFootprintCollisions(player, props);
@@ -110,17 +122,18 @@ export function registerArenaScene() {
       }
     });
 
-    // 8. Create the interactive E-Grab highlight & Phase 8 HUD
+    // 8. Create the interactive E-Grab highlight & Phase 9 HUD
     createPickupPromptRenderer(player);
-    createPhase8HUD(player, physicsObjects, camera);
+    createPhase9HUD(player, physicsObjects, camera);
   });
 }
 
 /**
  * Spawns a balanced assortment of 2.5D Physics Objects around the circular court:
  * - 2 Supply Crates (medium weight)
- * - 2 Brawler Spheres / Balls (lightweight, high bounce, rolling spin)
+ * - 2 Brawler Spheres / Balls (weighted bounce & rolling spin)
  * - 1 Iron Heavy Box (high mass, heavy impact)
+ * - 2 Sky Fuse Bombs (Phase 9: 3.5s ticking fuse & radial KABOOM!! blast!)
  */
 function spawnArenaPhysicsObjects() {
   const cx = ARENA_CONFIG.CENTER_X;
@@ -132,6 +145,8 @@ function spawnArenaPhysicsObjects() {
     createBall(cx - 120, cy + 90, 260),
     createBall(cx + 160, cy - 55, 300),
     createHeavyBox(cx, cy - 10, 240),
+    createBomb(cx - 185, cy + 18, 210),
+    createBomb(cx + 185, cy + 18, 250),
   ];
 }
 
@@ -902,9 +917,9 @@ function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the Phase 8 HUD card with live Throw System & Projectile telemetry.
+ * Displays the Phase 9 HUD card with live Bomb Fuse & Blast System telemetry.
  */
-function createPhase8HUD(player, physicsObjects, camera) {
+function createPhase9HUD(player, physicsObjects, camera) {
   let isZoomedIn = false;
 
   onKeyPress("c", () => camera.shake(12));
@@ -921,7 +936,7 @@ function createPhase8HUD(player, physicsObjects, camera) {
         // Compact top-left HUD card
         drawRect({
           pos: vec2(14, 14),
-          width: 492,
+          width: 505,
           height: 114,
           radius: 10,
           color: rgb(12, 16, 28),
@@ -933,53 +948,64 @@ function createPhase8HUD(player, physicsObjects, camera) {
         });
 
         drawText({
-          text: "PHASE 8: 2.5D THROW SYSTEM & IMPACT PROJECTILES",
+          text: "PHASE 9: SKY FUSE BOMBS & EXPLOSIVE BLAST SYSTEM",
           pos: vec2(28, 26),
           size: 13,
-          color: rgb(86, 220, 255),
+          color: rgb(255, 195, 75),
         });
 
         drawText({
-          text: "E : Pick Up  |  K / J / Click : THROW Object  |  Q : Drop Gently",
+          text: "E : Grab & Light Bomb  |  K / J / Click : Throw  |  B : Ignite Bombs",
           pos: vec2(28, 48),
           size: 12,
           color: rgb(210, 222, 245),
         });
 
+        const litBombs = physicsObjects.filter(
+          (o) => o.objectType === "bomb" && o.isLit && !o.isExplodedCooldown
+        );
         const held = player.heldObject;
-        if (held) {
-          const typeLabel = (held.objectType || "OBJECT").toUpperCase();
-          const force = held.throwForce || 260;
-          const dmg = held.damage || 25;
 
+        if (held && held.objectType === "bomb") {
+          const secs = Math.max(0.1, held.fuseTimer || 0).toFixed(1);
           drawText({
-            text: `ARMED: ${typeLabel} (${held.mass}kg)  |  THROW FORCE: ${force}  |  DAMAGE: ${dmg}`,
+            text: `DANGER! HOLDING LIVE BOMB — DETONATION IN: ${secs}s!`,
             pos: vec2(28, 72),
             size: 11.5,
-            color: rgb(255, 225, 85),
+            color: rgb(255, 95, 75),
           });
 
           drawText({
-            text: "READY TO HURL! Press K, J, or Click to Throw in facing direction!",
+            text: "THROW IT NOW (K / J / Click) before it explodes in your hands!",
             pos: vec2(28, 94),
             size: 12,
-            color: rgb(110, 245, 165),
+            color: rgb(255, 225, 85),
           });
-        } else {
-          const candidate = player.nearestPickupCandidate;
-          const candText = candidate
-            ? `IN RANGE: ${(candidate.objectType || "OBJECT").toUpperCase()} (${candidate.mass}kg) -> Press E to Grab!`
-            : "HANDS FREE: Grab any object with E, face target, & THROW!";
-
+        } else if (litBombs.length > 0) {
+          const minFuse = Math.min(...litBombs.map((b) => b.fuseTimer || 3.5));
           drawText({
-            text: candText,
+            text: `LIVE BOMB ON COURT! Fuse: ${Math.max(0.1, minFuse).toFixed(1)}s  |  Blast Radius: 145px`,
             pos: vec2(28, 72),
             size: 11.5,
-            color: candidate ? rgb(115, 255, 210) : rgb(255, 215, 90),
+            color: rgb(255, 115, 75),
           });
 
           drawText({
-            text: "TEST: Throw Heavy Box (CRUSH!) vs Ball (BONK!) into the Dummy!",
+            text: "WATCH THE RED BLAST RING! Lure the Dummy inside or stand back!",
+            pos: vec2(28, 94),
+            size: 12,
+            color: rgb(255, 220, 95),
+          });
+        } else {
+          drawText({
+            text: `VOLT HP: ${player.health}%  |  2 FUSE BOMBS ACTIVE (Grab with E or Punch to Light!)`,
+            pos: vec2(28, 72),
+            size: 11.5,
+            color: rgb(115, 255, 210),
+          });
+
+          drawText({
+            text: "TEST: Grab a Bomb (E) to light its 3.5s fuse & Throw (K/Click) at Dummy!",
             pos: vec2(28, 94),
             size: 12,
             color: rgb(185, 205, 240),

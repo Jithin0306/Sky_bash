@@ -22,6 +22,7 @@ import {
 import { drawCrateVisuals } from "../objects/crate.js";
 import { drawBallVisuals } from "../objects/ball.js";
 import { drawHeavyBoxVisuals } from "../objects/heavyBox.js";
+import { drawBombVisuals } from "../objects/bomb.js";
 
 /**
  * Spawns a Player character at the specified (x, y) arena coordinates.
@@ -615,7 +616,7 @@ function drawCharacterVisuals(player, C) {
 }
 
 /**
- * Renders the currently carried physics object (Crate, Ball, or Heavy Box)
+ * Renders the currently carried physics object (Crate, Ball, Heavy Box, or Bomb)
  * centered between Volt's raised boxing gloves during a hoist/carry!
  */
 function drawCarriedObjectVisuals(heldObj) {
@@ -626,6 +627,13 @@ function drawCarriedObjectVisuals(heldObj) {
     drawBallVisuals(heldObj.rollAngle || 0, false);
   } else if (heldObj.objectType === "heavyBox") {
     drawHeavyBoxVisuals(false);
+  } else if (heldObj.objectType === "bomb") {
+    drawBombVisuals(
+      false,
+      heldObj.isLit,
+      heldObj.fuseTimer,
+      heldObj.fuseDuration
+    );
   }
 }
 

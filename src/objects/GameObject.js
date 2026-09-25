@@ -115,10 +115,35 @@ export function createPhysicsObject(opts) {
        * thrown projectile wind streaks, and custom visual design.
        */
       draw() {
-        // When carried by the player (Phase 7), the player draws the held object
-        if (this.isCarried) return;
+        // When carried by the player (Phase 7) or waiting to respawn after exploding (Phase 9), skip ground draw
+        if (this.isCarried || this.isExplodedCooldown) return;
 
         const overArena = isPointOnArena(this.pos.x, this.pos.y);
+
+        // Phase 9: If this is a lit Bomb on the floor, draw its 2.5D blast-radius danger ring!
+        if (this.objectType === "bomb" && this.isLit && overArena && !this.isFallingInVoid) {
+          const urgency = clamp(
+            1 - (this.fuseTimer || 0) / (this.fuseDuration || 3.5),
+            0,
+            1
+          );
+          const pulseAlpha = 0.22 + 0.25 * Math.abs(Math.sin(time() * lerp(6, 20, urgency)));
+
+          pushTransform();
+          pushScale(1, ARENA_CONFIG.PERSPECTIVE_Y_SCALE);
+          drawCircle({
+            pos: vec2(0, 0),
+            radius: this.blastRadius || 145,
+            color: rgb(245, 55, 45),
+            opacity: pulseAlpha * 0.32,
+            outline: {
+              width: 2.5,
+              color: rgb(255, 95, 65),
+              opacity: pulseAlpha + 0.2,
+            },
+          });
+          popTransform();
+        }
 
         // 1. Draw 2.5D Ground Shadow on the sandstone floor
         drawGroundShadow({
