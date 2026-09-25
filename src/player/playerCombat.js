@@ -281,10 +281,6 @@ export function throwHeldObject(player, camera = null) {
   obj.isGrounded = false;
   obj.squashFactor = -0.25; // Slight forward stretch as it launches!
 
-  if (camera) {
-    camera.shake(5.0);
-  }
-
   spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "YEET!");
 }
 
@@ -374,9 +370,6 @@ function checkPunchHitbox(player, camera) {
       }
 
       player.hitStopTimer = COMBAT_CONFIG.HIT_STOP_DURATION;
-      if (camera) {
-        camera.shake(9.5);
-      }
 
       const impactX = (hitboxCenter.x + target.pos.x) * 0.5;
       const impactY = (hitboxCenter.y + target.pos.y) * 0.5;

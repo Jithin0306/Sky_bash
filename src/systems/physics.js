@@ -276,7 +276,10 @@ function resolveObjectToObjectCollisions(objects, camera = null) {
             otherObj.velZ = Math.max(otherObj.velZ, 165 / Math.sqrt(otherObj.mass));
             otherObj.isGrounded = false;
             otherObj.hitFlashTimer = 0.14;
-            if (camera) camera.shake(6.5);
+            // Camera shake ONLY for Heavy Box impacts!
+            if (camera && thrownObj.objectType === "heavyBox") {
+              camera.shake(6.0);
+            }
             spawnHitImpactVFX(
               (a.pos.x + b.pos.x) * 0.5,
               (a.pos.y + b.pos.y) * 0.5,
@@ -373,8 +376,9 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
             obj.squashFactor = 0.30;
             obj.hitFlashTimer = 0.14;
 
-            if (camera) {
-              camera.shake(obj.mass >= 2.0 ? 12.0 : 8.5);
+            // Camera shake ONLY for Heavy Box!
+            if (camera && obj.objectType === "heavyBox") {
+              camera.shake(9.0);
             }
 
             const impactWord =
@@ -416,7 +420,10 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
             if (typeof prop.onPunchHit === "function") {
               prop.onPunchHit(vec2(-nx, -ny), objSpeed);
             }
-            if (camera) camera.shake(6.0);
+            // Camera shake ONLY for Heavy Box!
+            if (camera && obj.objectType === "heavyBox") {
+              camera.shake(6.0);
+            }
             spawnHitImpactVFX(
               prop.pos.x,
               prop.pos.y,
@@ -540,8 +547,9 @@ function resolvePlayerToObjectInteractions(player, objects, camera = null) {
         obj.squashFactor = 0.30;
         obj.hitFlashTimer = 0.14;
 
-        if (camera) {
-          camera.shake(obj.mass >= 2.0 ? 12.0 : 8.5);
+        // Camera shake ONLY when hit by a Heavy Box!
+        if (camera && obj.objectType === "heavyBox") {
+          camera.shake(9.0);
         }
 
         const impactWord =

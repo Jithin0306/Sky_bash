@@ -61,7 +61,9 @@ export function updatePlayerMovement(player, delta) {
   // Milestone 7: Heavier carried objects slightly reduce top movement speed!
   const carryMass = player.heldObject ? player.heldObject.mass : 0;
   const carrySpeedMult = 1 / (1 + carryMass * COMBAT_CONFIG.CARRY_MASS_SLOWDOWN);
-  const effectiveSpeed = PLAYER_CONFIG.PLAYER_SPEED * carrySpeedMult;
+  const fighterSpeedMult = player.speedMultiplier || 1.0;
+  const effectiveSpeed =
+    PLAYER_CONFIG.PLAYER_SPEED * carrySpeedMult * fighterSpeedMult;
 
   const targetVelX = input.moveX * effectiveSpeed;
   const targetVelY =

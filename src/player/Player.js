@@ -56,6 +56,7 @@ export function createPlayer(
       playerId: options.playerId || 1,
       displayName: options.displayName || "VOLT",
       isAI: Boolean(options.isAI),
+      speedMultiplier: options.speedMultiplier ?? 1.0,
       aiStateLabel: "IDLE",
       ringColor,
       homePos: vec2(spawnX, spawnY),

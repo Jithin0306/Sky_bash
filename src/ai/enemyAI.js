@@ -280,12 +280,19 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       }
 
       // ----------------------------------------------------------------------
-      // PRIORITY 5: CHASE VOLT & BRAWL (MELEE PUNCH COMBOS!)
+      // PRIORITY 5: PACE & BRAWL (Relaxed arcade movement + 0.85s punch cooldown)
       // ----------------------------------------------------------------------
-      bot.aiStateLabel = distToPlayer <= 62 ? "MELEE BRAWL!" : "CHASE VOLT";
+      bot.aiStateLabel = distToPlayer <= 68 ? "MELEE BRAWL!" : "PATROL & CHASE";
 
-      // Add a natural brawler weave perpendicular to the chase vector
-      const weave = Math.sin(strafePhase) * (distToPlayer > 90 ? 0.28 : 0.08);
+      // Take a brief 0.5s breather pause right after swinging or throwing
+      if (actionCooldown > 0.35) {
+        bot.facing.x = dirToPlayerX;
+        bot.facing.y = dirToPlayerY;
+        return emptyInput;
+      }
+
+      // Add a wide, relaxed strafing circle so Pyro doesn't beeline straight like a hound
+      const weave = Math.sin(strafePhase * 0.7) * (distToPlayer > 95 ? 0.52 : 0.2);
       const perpX = -dirToPlayerY;
       const perpY = dirToPlayerX;
 
@@ -296,7 +303,7 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       chaseY /= chaseLen;
 
       const shouldPunch =
-        distToPlayer <= 58 &&
+        distToPlayer <= 56 &&
         actionCooldown <= 0 &&
         !targetPlayer.isFallingInVoid &&
         Math.abs((targetPlayer.zHeight || 0) - bot.zHeight) < 38;
@@ -304,14 +311,14 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       if (shouldPunch) {
         bot.facing.x = dirToPlayerX;
         bot.facing.y = dirToPlayerY;
-        actionCooldown = 0.36;
+        actionCooldown = 0.88; // Generous pause after each punch!
       }
 
       return {
         ...emptyInput,
         moveX: chaseX,
         moveY: chaseY,
-        isMoving: distToPlayer > 34,
+        isMoving: distToPlayer > 52,
         punchPressed: shouldPunch,
       };
     },

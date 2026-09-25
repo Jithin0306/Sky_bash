@@ -96,6 +96,7 @@ export function registerArenaScene() {
         playerId: 2,
         displayName: "PYRO",
         isAI: true,
+        speedMultiplier: 0.62, // 62% movement speed so Pyro paces naturally instead of hunting Volt down!
         colors: PYRO_BOT_PALETTE,
         ringColor: [245, 78, 65],
         camera,
@@ -161,7 +162,6 @@ export function registerArenaScene() {
         if (f.isFallingInVoid && !f.hasTriggeredRingOutBanner) {
           f.hasTriggeredRingOutBanner = true;
           spawnRingOutBanner(f.pos.x, f.pos.y);
-          camera.shake(10.5);
           if (f === enemyBot) {
             player.ringOutCount += 1;
           } else {
@@ -169,9 +169,8 @@ export function registerArenaScene() {
           }
         }
 
-        // Subtle camera thud & landing ring when landing from a jump/drop
+        // Landing dust ring when landing from a jump/drop (no camera shake!)
         if (f.justLanded && f.landImpactSpeed > 200) {
-          camera.shake(3.0);
           spawnLandingRing(f.pos.x, f.pos.y);
         }
       }
