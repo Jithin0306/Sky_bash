@@ -105,14 +105,12 @@ export const PLAYER_CONFIG = {
 // ----------------------------------------------------------------------------
 export const ARENA_CONFIG = {
   // Screen coordinates of the arena's center point
-  // Slightly below vertical center (375) so high jumps at the top rim never clip the top border!
   CENTER_X: 640,
-  CENTER_Y: 375,
+  CENTER_Y: 365,
 
   // Playable horizontal radius of the circular platform (in pixels)
-  // 355px leaves plenty of breathing room on all 4 sides of the 1280x720 canvas
-  // so jumping and falling off the cliff is 100% visible around the entire perimeter!
-  RADIUS: 355,
+  // Increased by ~1.4x (from 355 -> 495px, a 990px-wide circular court!)
+  RADIUS: 495,
 
   // Vertical compression ratio that creates the 2.5D viewing angle.
   // 1.0 = flat top-down 2D circle
@@ -121,10 +119,10 @@ export const ARENA_CONFIG = {
   PERSPECTIVE_Y_SCALE: 0.64,
 
   // Visual thickness of the 3D platform edge underneath the floor
-  PLATFORM_DEPTH: 52,
+  PLATFORM_DEPTH: 54,
 
   // Number of decorative perimeter pillars/lights around the rim
-  RIM_NODE_COUNT: 12,
+  RIM_NODE_COUNT: 16,
 
   // Color palette for the floating arena (RGB arrays: [R, G, B])
   // Warm Sunlit Sandstone & Golden-Bronze palette creates high contrast
@@ -148,24 +146,20 @@ export const ARENA_CONFIG = {
 // ----------------------------------------------------------------------------
 export const CAMERA_CONFIG = {
   // How quickly the camera catches up to its target position.
-  // Higher values (e.g., 12) = tighter tracking; Lower values (e.g., 3) = lazier drift.
   FOLLOW_SPEED: 6.0,
 
   // How quickly the camera interpolates toward the target zoom level.
   ZOOM_SPEED: 5.0,
 
-  // Default camera zoom (1.0 = 100% normal scale)
-  DEFAULT_ZOOM: 1.0,
+  // Default camera zoom (0.84 fits the 1.4x expanded 990px-wide arena with full sky margin!)
+  DEFAULT_ZOOM: 0.84,
 
-  // How much the camera subtly leans toward the action vs staying centered.
-  // 0.0 = 100% locked to arena center.
-  // 0.08 = tiny, subtle lean while keeping the arena dead-center.
-  PLAYER_WEIGHT: 0.08,
+  // Smoothly leans toward the player as they roam the expanded 1.4x arena
+  PLAYER_WEIGHT: 0.18,
 
-  // Hard limit (in pixels) on how far the camera is EVER allowed to shift
-  // away from the arena center. Guarantees the arena always stays centered!
-  MAX_OFFSET_X: 30,
-  MAX_OFFSET_Y: 18,
+  // Maximum camera pan offset from arena center
+  MAX_OFFSET_X: 75,
+  MAX_OFFSET_Y: 45,
 
   // How fast screen shake decays back to 0 (in shake units per second)
   SHAKE_DECAY: 28.0,

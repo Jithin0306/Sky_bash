@@ -19,6 +19,7 @@ import {
   PLAYER_CONFIG,
   COMBAT_CONFIG,
   OBJECTS_CONFIG,
+  CAMERA_CONFIG,
 } from "../config/gameConfig.js";
 import { createArenaCamera } from "../systems/camera.js";
 import { readLocalPlayerInput } from "../systems/input.js";
@@ -126,11 +127,11 @@ function spawnArenaPhysicsObjects() {
   const cy = ARENA_CONFIG.CENTER_Y;
 
   return [
-    createCrate(cx - 105, cy - 30, 180),
-    createCrate(cx + 105, cy + 55, 220),
-    createBall(cx - 85, cy + 65, 260),
-    createBall(cx + 115, cy - 40, 300),
-    createHeavyBox(cx, cy - 5, 240),
+    createCrate(cx - 145, cy - 42, 180),
+    createCrate(cx + 145, cy + 75, 220),
+    createBall(cx - 120, cy + 90, 260),
+    createBall(cx + 160, cy - 55, 300),
+    createHeavyBox(cx, cy - 10, 240),
   ];
 }
 
@@ -517,8 +518,8 @@ function createDepthTestProps() {
 
   // 1. Left & Right Crystal Energy Totems (Ring/flash when punched!)
   const totemPositions = [
-    { x: ARENA_CONFIG.CENTER_X - 165, y: ARENA_CONFIG.CENTER_Y - 10 },
-    { x: ARENA_CONFIG.CENTER_X + 165, y: ARENA_CONFIG.CENTER_Y - 10 },
+    { x: ARENA_CONFIG.CENTER_X - 235, y: ARENA_CONFIG.CENTER_Y - 14 },
+    { x: ARENA_CONFIG.CENTER_X + 235, y: ARENA_CONFIG.CENTER_Y - 14 },
   ];
 
   for (const pt of totemPositions) {
@@ -601,7 +602,7 @@ function createDepthTestProps() {
   }
 
   // 2. Center-North Sparring Target Dummy (Can be punched across the court & off the cliff!)
-  const dummySpawn = vec2(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y - 68);
+  const dummySpawn = vec2(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y - 95);
   const dummy = add([
     pos(dummySpawn.x, dummySpawn.y),
     z(Math.round(dummySpawn.y)),
@@ -909,7 +910,7 @@ function createPhase8HUD(player, physicsObjects, camera) {
   onKeyPress("c", () => camera.shake(12));
   onKeyPress("z", () => {
     isZoomedIn = !isZoomedIn;
-    camera.setZoom(isZoomedIn ? 1.14 : 1.0);
+    camera.setZoom(isZoomedIn ? 1.0 : CAMERA_CONFIG.DEFAULT_ZOOM);
   });
 
   add([
