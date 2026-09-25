@@ -123,10 +123,18 @@ export function updateBombSystem(fighters, objects, props, camera) {
 }
 
 /**
- * Triggers a massive 2.5D radial explosion at the bomb's current position!
+ * Triggers a massive 2.5D radial explosion at the explosive's current position!
+ * Shared by Sky Fuse Bombs, Slime Sticky Bombs, and Proximity Landmines.
  */
-export function detonateBomb(bomb, fighterList, objects, props, camera) {
-  // If a fighter was still holding the bomb when the timer ran out, force-release it at their head!
+export function detonateBomb(
+  bomb,
+  fighterList,
+  objects,
+  props,
+  camera,
+  vfxTheme = "fire"
+) {
+  // 1. Determine exact 2.5D blast center (accounting for carried or fighter-stuck state!)
   let blastX = bomb.pos.x;
   let blastY = bomb.pos.y;
   let blastZ = Math.max(0, bomb.zHeight);
@@ -137,25 +145,36 @@ export function detonateBomb(bomb, fighterList, objects, props, camera) {
     blastZ = bomb.carrier.zHeight + 44;
     bomb.carrier.heldObject = null;
     bomb.carrier.pickupAnimTimer = 0;
+  } else if (bomb.stuckToTarget && !bomb.stuckToTarget.isFallingInVoid) {
+    blastX = bomb.stuckToTarget.pos.x;
+    blastY = bomb.stuckToTarget.pos.y;
+    blastZ = (bomb.stuckToTarget.zHeight || 0) + 26;
   }
 
   bomb.isCarried = false;
   bomb.carrier = null;
+  bomb.stuckToTarget = null;
+  bomb.isStuckToFloor = false;
   bomb.isLit = false;
+  bomb.isArmed = false;
+  bomb.isTriggered = false;
   bomb.isThrownProjectile = false;
   bomb.isExplodedCooldown = true;
-  bomb.respawnTimer = rand(6.0, 9.5); // Generous 6.0s-9.5s wait before next bomb drops!
+  bomb.respawnTimer = rand(
+    OBJECTS_CONFIG.SKY_RESPAWN_DELAY_MIN || 5.5,
+    OBJECTS_CONFIG.SKY_RESPAWN_DELAY_MAX || 9.5
+  );
 
   const radius = bomb.blastRadius || 145;
   const maxForce = bomb.blastForce || 680;
 
-  // 1. Heavy camera shake & multi-layered KABOOM!! visual explosion
+  // 2. Heavy camera shake & multi-layered KABOOM!! visual explosion
   if (camera) {
-    camera.shake(16.5);
+    camera.shake(17.5);
   }
-  spawnExplosionVFX(blastX, blastY, blastZ, radius);
+  spawnExplosionVFX(blastX, blastY, blastZ, radius, vfxTheme);
 
-  // 2. Apply radial 2.5D blast knockback to ALL Fighters (Volt & Pyro AI!)
+  // 3. Apply radial 2.5D blast knockback to ALL Fighters (Volt & Pyro AI!)
   const fighters = Array.isArray(fighterList)
     ? fighterList
     : fighterList
@@ -170,26 +189,30 @@ export function detonateBomb(bomb, fighterList, objects, props, camera) {
     const dist = Math.hypot(dx, dy);
 
     if (dist <= radius) {
-      const falloff = clamp(1 - dist / (radius * 1.15), 0.3, 1.0);
-      const nx = dist > 1 ? dx / dist : 0;
-      const ny = dist > 1 ? dy / dist : 1;
+      const falloff = clamp(1 - dist / (radius * 1.15), 0.35, 1.0);
+      // If a sticky bomb was glued directly onto this fighter, launch them away from arena center or in their facing direction!
+      let nx = dist > 2 ? dx / dist : fighter.facing?.x || 1;
+      let ny = dist > 2 ? dy / dist : fighter.facing?.y || 0.5;
+      const nLen = Math.hypot(nx, ny) || 1;
+      nx /= nLen;
+      ny /= nLen;
 
-      const launchForce = maxForce * 0.92 * falloff;
+      const launchForce = maxForce * 0.94 * falloff;
       fighter.knockback.x += nx * launchForce;
       fighter.knockback.y +=
         ny * launchForce * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
-      fighter.velZ = Math.max(fighter.velZ, 315 * falloff);
+      fighter.velZ = Math.max(fighter.velZ, 335 * falloff);
       fighter.isGrounded = false;
       fighter.landingSquash = -0.35;
       fighter.hitFlashTimer = 0.24;
       fighter.health = Math.max(
         0,
-        (fighter.health || 100) - Math.round(bomb.damage * falloff)
+        (fighter.health || 100) - Math.round((bomb.damage || 65) * falloff)
       );
     }
   }
 
-  // 3. Apply radial 2.5D blast knockback to Arena Props (Sparring Dummy & Crystal Orbs)
+  // 4. Apply radial 2.5D blast knockback to Arena Props (Sparring Dummy & Crystal Orbs)
   if (props) {
     for (const prop of props) {
       if (prop.isFallingInVoid) continue;
@@ -220,10 +243,16 @@ export function detonateBomb(bomb, fighterList, objects, props, camera) {
     }
   }
 
-  // 4. Apply radial 2.5D blast knockback to all other Physics Objects & Chain-Ignite Bombs!
+  // 5. Apply radial 2.5D blast knockback to all other Physics Objects & Chain-Ignite Bombs/StickyBombs/Mines!
   if (objects) {
     for (const other of objects) {
-      if (other === bomb || other.isCarried || other.isFallingInVoid || other.isExplodedCooldown) {
+      if (
+        other === bomb ||
+        other.isCarried ||
+        other.isFallingInVoid ||
+        other.isExplodedCooldown ||
+        other.isWaitingToDrop
+      ) {
         continue;
       }
 
@@ -236,6 +265,9 @@ export function detonateBomb(bomb, fighterList, objects, props, camera) {
         const nx = dist > 1 ? dx / dist : rand(-1, 1);
         const ny = dist > 1 ? dy / dist : rand(-1, 1);
 
+        other.stuckToTarget = null;
+        other.isStuckToFloor = false;
+
         const objForce = (maxForce * falloff) / Math.sqrt(other.mass || 1.0);
         other.velocity.x = nx * objForce;
         other.velocity.y =
@@ -245,9 +277,9 @@ export function detonateBomb(bomb, fighterList, objects, props, camera) {
         other.hitFlashTimer = 0.22;
         other.squashFactor = 0.35;
 
-        // Domino Chain-Reaction: If another bomb is inside the blast wave, ignite it with a short 0.28s fuse!
-        if (other.objectType === "bomb" && typeof other.ignite === "function") {
-          other.ignite(0.28);
+        // Domino Chain-Reaction: If any Bomb, Sticky Bomb, or Landmine is inside the blast wave, ignite/trigger it!
+        if (typeof other.ignite === "function") {
+          other.ignite(0.26);
         }
       }
     }
@@ -373,9 +405,39 @@ export function drawBombVisuals(
  * Spawns a dramatic 2.5D explosion fireball, expanding shockwave ring,
  * flying ember shards, and a compact "KABOOM!!" comic banner!
  */
-function spawnExplosionVFX(x, y, zHeight, blastRadius) {
+export function spawnExplosionVFX(
+  x,
+  y,
+  zHeight,
+  blastRadius,
+  vfxTheme = "fire"
+) {
   let age = 0;
   const duration = 0.62;
+
+  const isSlime = vfxTheme === "slime";
+  const isMine = vfxTheme === "mine";
+
+  const ringRGB = isSlime
+    ? [115, 255, 85]
+    : isMine
+    ? [255, 75, 65]
+    : [255, 195, 65];
+  const outerFireRGB = isSlime
+    ? [55, 215, 75]
+    : isMine
+    ? [235, 45, 55]
+    : [255, 92, 32];
+  const innerCoreRGB = isSlime
+    ? [225, 255, 165]
+    : isMine
+    ? [255, 235, 145]
+    : [255, 248, 185];
+  const shardAltRGB = isSlime
+    ? [45, 195, 65]
+    : isMine
+    ? [255, 55, 55]
+    : [245, 75, 38];
 
   const embers = [];
   for (let i = 0; i < 14; i++) {
@@ -411,7 +473,7 @@ function spawnExplosionVFX(x, y, zHeight, blastRadius) {
           fill: false,
           outline: {
             width: 5 * alpha,
-            color: rgb(255, 195, 65),
+            color: rgb(...ringRGB),
             opacity: alpha * 0.85,
           },
         });
@@ -422,24 +484,24 @@ function spawnExplosionVFX(x, y, zHeight, blastRadius) {
           const fireProg = age / 0.36;
           const fireAlpha = 1 - fireProg;
 
-          // Outer crimson-orange blast sphere
+          // Outer blast sphere
           drawCircle({
             pos: vec2(0, drawY - 18),
             radius: lerp(22, blastRadius * 0.62, fireProg),
-            color: rgb(255, 92, 32),
+            color: rgb(...outerFireRGB),
             opacity: fireAlpha * 0.85,
           });
 
-          // Inner white-gold flash core
+          // Inner flash core
           drawCircle({
             pos: vec2(0, drawY - 18),
             radius: lerp(14, blastRadius * 0.38, fireProg),
-            color: rgb(255, 248, 185),
+            color: rgb(...innerCoreRGB),
             opacity: fireAlpha * 0.95,
           });
         }
 
-        // 3. Flying ember shards
+        // 3. Flying ember / slime shards
         for (const e of embers) {
           const dist = e.speed * age;
           const ex = e.cos * dist;
@@ -447,7 +509,7 @@ function spawnExplosionVFX(x, y, zHeight, blastRadius) {
           drawCircle({
             pos: vec2(ex, ey),
             radius: e.size * (1 - progress * 0.7),
-            color: e.isGold ? rgb(255, 220, 70) : rgb(245, 75, 38),
+            color: e.isGold ? rgb(...ringRGB) : rgb(...shardAltRGB),
             outline: { width: 1.5, color: rgb(28, 18, 22) },
           });
         }
@@ -477,16 +539,19 @@ function spawnExplosionVFX(x, y, zHeight, blastRadius) {
           width: 76,
           height: 21,
           radius: 6,
-          color: rgb(255, 205, 45),
+          color: isSlime ? rgb(145, 255, 85) : rgb(255, 205, 45),
           opacity: alpha,
-          outline: { width: 2.2, color: rgb(225, 35, 30) },
+          outline: {
+            width: 2.2,
+            color: isSlime ? rgb(22, 115, 38) : rgb(225, 35, 30),
+          },
         });
 
         drawText({
           text: "KABOOM!!",
           pos: vec2(-30, -7),
           size: 12,
-          color: rgb(195, 22, 22),
+          color: isSlime ? rgb(18, 85, 28) : rgb(195, 22, 22),
           opacity: alpha,
         });
 

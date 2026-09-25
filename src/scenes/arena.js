@@ -35,6 +35,8 @@ import { createCrate } from "../objects/crate.js";
 import { createBall } from "../objects/ball.js";
 import { createHeavyBox } from "../objects/heavyBox.js";
 import { createBomb } from "../objects/bomb.js";
+import { createStickyBomb } from "../objects/stickyBomb.js";
+import { createMine } from "../objects/mine.js";
 import {
   createEnemyAIController,
   PYRO_BOT_PALETTE,
@@ -129,14 +131,20 @@ export function registerArenaScene() {
       }
     });
 
-    // Phase 9: Press B anytime to ignite all Bombs on the court for instant blast testing!
+    // Phase 9 & 10: Press B anytime to ignite/trigger all Bombs, Sticky Bombs, & Landmines!
     onKeyPress("b", () => {
       for (const obj of physicsObjects) {
-        if (obj.objectType === "bomb") {
-          if (obj.isExplodedCooldown) {
+        if (
+          obj.objectType === "bomb" ||
+          obj.objectType === "stickyBomb" ||
+          obj.objectType === "mine"
+        ) {
+          if (obj.isExplodedCooldown || obj.isWaitingToDrop) {
             obj.respawnFromSky();
           }
-          obj.ignite();
+          if (typeof obj.ignite === "function") {
+            obj.ignite();
+          }
         }
       }
     });
@@ -185,25 +193,24 @@ export function registerArenaScene() {
 }
 
 /**
- * Spawns a balanced assortment of 2.5D Physics Objects around the circular court
- * with staggered sky-drop delays so items enter the arena gradually over time!
- * - 2 Supply Crates (medium weight)
- * - 2 Brawler Spheres / Balls (weighted bounce & rolling spin)
- * - 1 Iron Heavy Box (high mass, heavy impact)
- * - 2 Sky Fuse Bombs (Phase 9: 3.5s ticking fuse & radial KABOOM!! blast!)
+ * Spawns a balanced assortment of 2.5D Physics Objects & Explosives around the circular court
+ * with staggered sky-drop delays so items enter the arena gradually over time:
+ * - 1 Slime Sticky Bomb & 1 Proximity Landmine right at match start (0s delay)
+ * - Followed by Supply Crate, Sky Fuse Bomb, Brawler Sphere, Heavy Box, & extra Sticky/Mine!
  */
 function spawnArenaPhysicsObjects() {
   const cx = ARENA_CONFIG.CENTER_X;
   const cy = ARENA_CONFIG.CENTER_Y;
 
   return [
-    createCrate(cx - 145, cy - 42, 180, 0),
-    createBall(cx - 120, cy + 90, 260, 0),
-    createCrate(cx + 145, cy + 75, 220, 3.0),
-    createBomb(cx - 185, cy + 18, 210, 4.8),
-    createBall(cx + 160, cy - 55, 300, 6.2),
-    createHeavyBox(cx, cy - 10, 240, 7.8),
-    createBomb(cx + 185, cy + 18, 250, 9.2),
+    createStickyBomb(cx - 175, cy + 20, 210, 0),
+    createMine(cx - 85, cy + 92, 230, 0),
+    createCrate(cx - 145, cy - 42, 180, 2.8),
+    createBomb(cx + 185, cy + 18, 240, 4.4),
+    createBall(cx + 145, cy - 55, 270, 6.0),
+    createStickyBomb(cx + 120, cy + 82, 240, 7.6),
+    createMine(cx + 55, cy - 88, 250, 9.0),
+    createHeavyBox(cx, cy - 10, 240, 10.5),
   ];
 }
 

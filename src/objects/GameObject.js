@@ -149,38 +149,47 @@ export function createPhysicsObject(opts) {
 
         const overArena = isPointOnArena(this.pos.x, this.pos.y);
 
-        // Phase 9: If this is a lit Bomb on the floor, draw its 2.5D blast-radius danger ring!
-        if (this.objectType === "bomb" && this.isLit && overArena && !this.isFallingInVoid) {
+        // Phase 9 & 10: If this is a lit Bomb or Sticky Bomb, draw its 2.5D blast-radius danger ring!
+        if (
+          (this.objectType === "bomb" || this.objectType === "stickyBomb") &&
+          this.isLit &&
+          overArena &&
+          !this.isFallingInVoid
+        ) {
           const urgency = clamp(
             1 - (this.fuseTimer || 0) / (this.fuseDuration || 3.5),
             0,
             1
           );
-          const pulseAlpha = 0.22 + 0.25 * Math.abs(Math.sin(time() * lerp(6, 20, urgency)));
+          const pulseAlpha =
+            0.22 + 0.25 * Math.abs(Math.sin(time() * lerp(6, 20, urgency)));
+          const isSlime = this.objectType === "stickyBomb";
 
           pushTransform();
           pushScale(1, ARENA_CONFIG.PERSPECTIVE_Y_SCALE);
           drawCircle({
             pos: vec2(0, 0),
             radius: this.blastRadius || 145,
-            color: rgb(245, 55, 45),
-            opacity: pulseAlpha * 0.32,
+            color: isSlime ? rgb(65, 235, 75) : rgb(245, 55, 45),
+            opacity: pulseAlpha * 0.3,
             outline: {
               width: 2.5,
-              color: rgb(255, 95, 65),
+              color: isSlime ? rgb(145, 255, 95) : rgb(255, 95, 65),
               opacity: pulseAlpha + 0.2,
             },
           });
           popTransform();
         }
 
-        // 1. Draw 2.5D Ground Shadow on the sandstone floor
-        drawGroundShadow({
-          radius: this.footprintRadius,
-          zHeight: this.zHeight,
-          overArena,
-          isFallingInVoid: this.isFallingInVoid,
-        });
+        // 1. Draw 2.5D Ground Shadow on the sandstone floor (skip when glued onto a fighter)
+        if (!this.stuckToTarget) {
+          drawGroundShadow({
+            radius: this.footprintRadius,
+            zHeight: this.zHeight,
+            overArena,
+            isFallingInVoid: this.isFallingInVoid,
+          });
+        }
 
         // 2. Phase 8: High-speed motion wind streaks when flying as a thrown projectile!
         if (this.isThrownProjectile) {

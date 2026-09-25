@@ -19,6 +19,8 @@ import { getArenaDistance, isPointOnArena } from "../scenes/arena.js";
 import { updateDepthSort } from "./depthSort.js";
 import { spawnHitImpactVFX } from "../player/playerCombat.js";
 import { updateBombSystem } from "../objects/bomb.js";
+import { updateStickyBombSystem } from "../objects/stickyBomb.js";
+import { updateMineSystem } from "../objects/mine.js";
 
 /**
  * Steps the entire 2.5D object physics simulation for the current frame.
@@ -41,8 +43,10 @@ export function updatePhysicsSystem(
     ? [fighters]
     : [];
 
-  // 0. Phase 9: Step Bomb fuses, radial explosions, & chain-reaction detonations!
+  // 0. Step Bombs, Slime Sticky Bombs, & Proximity Landmines!
   updateBombSystem(fighterList, objects, props, camera);
+  updateStickyBombSystem(fighterList, objects, props, camera);
+  updateMineSystem(fighterList, objects, props, camera);
 
   // 1. Update each individual object's motion, gravity, bounce, & cliff fall
   for (const obj of objects) {
@@ -85,6 +89,12 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
 
   // If carried in a player's hands (Phase 7) or cooling down after exploding (Phase 9), skip floor physics
   if (obj.isCarried || obj.isExplodedCooldown) {
+    return;
+  }
+
+  // If a Sticky Bomb is glued onto a fighter, updateDepthSort so it renders in front of their chest and return!
+  if (obj.stuckToTarget) {
+    obj.z = Math.round(obj.pos.y) + 2;
     return;
   }
 
@@ -534,6 +544,25 @@ function resolvePlayerToObjectInteractions(player, objects, camera = null) {
       ) {
         obj.throwHitSet.add(player);
 
+        // Special case: Slime Sticky Bomb glues directly onto the fighter instead of bouncing off!
+        if (obj.objectType === "stickyBomb") {
+          obj.stuckToTarget = player;
+          obj.isStuckToFloor = false;
+          obj.isThrownProjectile = false;
+          obj.velocity = vec2(0, 0);
+          obj.velZ = 0;
+          obj.isGrounded = false;
+          if (typeof obj.ignite === "function") obj.ignite();
+          player.hitFlashTimer = 0.16;
+          spawnHitImpactVFX(
+            player.pos.x,
+            player.pos.y,
+            (player.zHeight || 0) + 28,
+            "STUCK!!"
+          );
+          continue;
+        }
+
         // Knock the fighter in the direction the projectile was flying!
         const hitDirX = -nx;
         const hitDirY = -ny;
@@ -578,6 +607,15 @@ function resolvePlayerToObjectInteractions(player, objects, camera = null) {
           (player.zHeight || 0) + 28,
           impactWord
         );
+        continue;
+      }
+
+      // Skip grounded pushing if the object is glued to a fighter/floor or is an armed landmine!
+      if (
+        obj.stuckToTarget ||
+        obj.isStuckToFloor ||
+        (obj.objectType === "mine" && obj.isArmed)
+      ) {
         continue;
       }
 

@@ -27,6 +27,8 @@ import { drawCrateVisuals } from "../objects/crate.js";
 import { drawBallVisuals } from "../objects/ball.js";
 import { drawHeavyBoxVisuals } from "../objects/heavyBox.js";
 import { drawBombVisuals } from "../objects/bomb.js";
+import { drawStickyBombVisuals } from "../objects/stickyBomb.js";
+import { drawMineVisuals } from "../objects/mine.js";
 
 /**
  * Spawns a Player or AI Brawler character at the specified (x, y) arena coordinates.
@@ -872,6 +874,23 @@ function drawCarriedObjectVisuals(heldObj) {
       heldObj.isLit,
       heldObj.fuseTimer,
       heldObj.fuseDuration
+    );
+  } else if (heldObj.objectType === "stickyBomb") {
+    drawStickyBombVisuals(
+      false,
+      heldObj.isLit,
+      heldObj.fuseTimer,
+      heldObj.fuseDuration,
+      false
+    );
+  } else if (heldObj.objectType === "mine") {
+    drawMineVisuals(
+      false,
+      heldObj.isArmed,
+      heldObj.isTriggered,
+      heldObj.triggerTimer,
+      heldObj.triggerRadius,
+      false
     );
   } else if (heldObj.objectType === "fighter") {
     drawCharacterVisuals(

@@ -116,15 +116,26 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       }
 
       // ----------------------------------------------------------------------
-      // PRIORITY 2: EVADE LIVE TICKING BOMBS ON THE FLOOR
+      // PRIORITY 2: EVADE LIVE BOMBS, STICKY BOMBS, & ARMED LANDMINES!
       // ----------------------------------------------------------------------
       let nearestDangerBomb = null;
-      let nearestBombDist = 175; // Safe buffer outside the 145px blast radius!
+      let nearestBombDist = 175; // Safe buffer outside the blast/trigger radius!
+      let stuckWithStickyBomb = false;
 
       for (const obj of physicsObjects) {
+        if (obj.stuckToTarget === bot && obj.isLit) {
+          stuckWithStickyBomb = true;
+          continue;
+        }
+        const isDangerExplosive =
+          (obj.objectType === "bomb" && obj.isLit) ||
+          (obj.objectType === "stickyBomb" &&
+            obj.isLit &&
+            obj.stuckToTarget !== targetPlayer) ||
+          (obj.objectType === "mine" && (obj.isArmed || obj.isTriggered));
+
         if (
-          obj.objectType === "bomb" &&
-          obj.isLit &&
+          isDangerExplosive &&
           !obj.isCarried &&
           !obj.isExplodedCooldown &&
           !obj.isFallingInVoid &&
@@ -134,7 +145,9 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
           const bdy =
             (bot.pos.y - obj.pos.y) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
           const bDist = Math.hypot(bdx, bdy);
-          if (bDist < nearestBombDist) {
+          const dangerThreshold =
+            obj.objectType === "mine" && !obj.isTriggered ? 118 : 175;
+          if (bDist < dangerThreshold && bDist < nearestBombDist) {
             nearestBombDist = bDist;
             nearestDangerBomb = obj;
           }
@@ -142,7 +155,10 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       }
 
       if (nearestDangerBomb) {
-        bot.aiStateLabel = "DODGE BOMB!";
+        bot.aiStateLabel =
+          nearestDangerBomb.objectType === "mine"
+            ? "AVOID LANDMINE!"
+            : "DODGE BOMB!";
         let awayX = bot.pos.x - nearestDangerBomb.pos.x;
         let awayY =
           (bot.pos.y - nearestDangerBomb.pos.y) /
@@ -163,7 +179,8 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
           moveX: awayX / len,
           moveY: awayY / len,
           isMoving: true,
-          jumpPressed: bot.isGrounded && nearestDangerBomb.fuseTimer < 0.7,
+          jumpPressed:
+            bot.isGrounded && (nearestDangerBomb.fuseTimer || 2.0) < 0.7,
         };
       }
 
@@ -175,8 +192,19 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       const dirToPlayerX = toPlayerX / distToPlayer;
       const dirToPlayerY = toPlayerY / distToPlayer;
 
+      // If a Sticky Bomb is glued to Pyro, Pyro panics and chases Volt to share the blast!
+      if (stuckWithStickyBomb) {
+        bot.aiStateLabel = "STUCK! SHARE BLAST!";
+        return {
+          ...emptyInput,
+          moveX: dirToPlayerX,
+          moveY: dirToPlayerY,
+          isMoving: true,
+        };
+      }
+
       // ----------------------------------------------------------------------
-      // PRIORITY 3: AIM & THROW WHEN CARRYING AN OBJECT, BOMB, OR FIGHTER!
+      // PRIORITY 3: AIM & THROW WHEN CARRYING AN OBJECT, BOMB, STICKY, MINE, OR FIGHTER!
       // ----------------------------------------------------------------------
       if (bot.heldObject) {
         // Special case: Pyro is carrying VOLT overhead! March toward the nearest cliff edge and throw him into the Void!
@@ -217,15 +245,17 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
 
         bot.aiStateLabel = `AIM ${bot.heldObject.objectType.toUpperCase()}`;
 
-        const isHoldingBomb = bot.heldObject.objectType === "bomb";
+        const isHoldingExplosive =
+          bot.heldObject.objectType === "bomb" ||
+          bot.heldObject.objectType === "stickyBomb" ||
+          bot.heldObject.objectType === "mine";
         const bombUrgent =
-          isHoldingBomb && (bot.heldObject.fuseTimer || 3.5) < 1.85;
+          isHoldingExplosive && (bot.heldObject.fuseTimer || 3.5) < 1.85;
 
         // Check how well Pyro's facing direction is aligned with Volt
         const alignDot =
           bot.facing.x * dirToPlayerX + bot.facing.y * dirToPlayerY;
 
-        // Desired throw distance (~135px to 245px for our halved throw arc)
         let moveX = dirToPlayerX;
         let moveY = dirToPlayerY;
 
@@ -263,7 +293,7 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       }
 
       // ----------------------------------------------------------------------
-      // PRIORITY 4: OPPORTUNISTICALLY GRAB NEARBY ITEMS / UNLIT BOMBS
+      // PRIORITY 4: OPPORTUNISTICALLY GRAB NEARBY ITEMS / BOMBS / STICKIES / MINES
       // ----------------------------------------------------------------------
       if (distToPlayer > 78 && actionCooldown <= 0) {
         let bestItem = null;
@@ -275,12 +305,23 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
             obj.isFallingInVoid ||
             obj.isExplodedCooldown ||
             obj.isWaitingToDrop ||
-            obj.isThrownProjectile
+            obj.isThrownProjectile ||
+            obj.stuckToTarget
           ) {
             continue;
           }
-          // Don't grab a bomb that is already about to explode!
-          if (obj.objectType === "bomb" && obj.isLit && obj.fuseTimer < 2.2) {
+          // Don't grab a bomb or sticky bomb that is already about to explode, or an armed landmine!
+          if (
+            (obj.objectType === "bomb" || obj.objectType === "stickyBomb") &&
+            obj.isLit &&
+            obj.fuseTimer < 2.2
+          ) {
+            continue;
+          }
+          if (
+            obj.objectType === "mine" &&
+            (obj.isArmed || obj.isTriggered)
+          ) {
             continue;
           }
           // Only fetch items safely inside the arena
@@ -291,8 +332,12 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
             (obj.pos.y - bot.pos.y) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
           const itemDist = Math.hypot(idx, idy);
 
-          // Slightly prioritize Bombs and Crates
-          const priorityBonus = obj.objectType === "bomb" ? -25 : 0;
+          // Prioritize Bombs, Sticky Bombs, and Standby Landmines!
+          const isExplosiveItem =
+            obj.objectType === "bomb" ||
+            obj.objectType === "stickyBomb" ||
+            obj.objectType === "mine";
+          const priorityBonus = isExplosiveItem ? -28 : 0;
           if (itemDist + priorityBonus < bestScore) {
             bestScore = itemDist + priorityBonus;
             bestItem = obj;

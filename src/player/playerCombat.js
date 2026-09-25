@@ -142,6 +142,8 @@ export function findNearestPickupCandidate(player) {
       obj.isFallingInVoid ||
       obj.isExplodedCooldown ||
       obj.isWaitingToDrop ||
+      obj.stuckToTarget ||
+      (obj.objectType === "mine" && (obj.isArmed || obj.isTriggered)) ||
       (obj.grabImmunityTimer && obj.grabImmunityTimer > 0)
     ) {
       continue;
@@ -187,6 +189,8 @@ export function pickupObject(player, obj) {
   // Disable normal ground physics on the object/fighter while carried
   obj.isCarried = true;
   obj.carrier = player;
+  obj.stuckToTarget = null;
+  obj.isStuckToFloor = false;
   obj.velocity = vec2(0, 0);
   if (obj.knockback) obj.knockback = vec2(0, 0);
   obj.velZ = 0;
@@ -195,8 +199,14 @@ export function pickupObject(player, obj) {
     obj.struggleProgress = 0;
   }
 
-  // Phase 9: Picking up a Bomb automatically ignites its 3.5s fuse!
-  if (typeof obj.ignite === "function") {
+  // Picking up a Bomb or Sticky Bomb ignites its fuse; picking up a Landmine prepares it to arm on landing!
+  if (obj.objectType === "mine") {
+    obj.armOnLanding = true;
+    obj.armingTimer = obj.armDelay || 0.65;
+    obj.isArmed = false;
+    obj.isTriggered = false;
+    obj.isLit = false;
+  } else if (typeof obj.ignite === "function") {
     obj.ignite();
   }
 
