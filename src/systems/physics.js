@@ -365,13 +365,14 @@ function resolvePlayerToObjectInteractions(player, objects) {
       obj.pos.y +=
         ny * overlap * objectYield * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
-      // Transfer push velocity from the running player into the object (scaled by 1/mass)
+      // Transfer gentle push velocity from the walking player into the object
+      // (Softened to 0.36 so walking up to a Ball nudges it slightly instead of kicking it out of grab reach!)
       const pushSpeed = Math.hypot(
         player.velocity.x,
         player.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE
       );
       if (pushSpeed > 20) {
-        const transfer = (pushSpeed * 0.68) / obj.mass;
+        const transfer = (pushSpeed * 0.36) / obj.mass;
         obj.velocity.x = nx * transfer;
         obj.velocity.y = ny * transfer * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
       }

@@ -978,7 +978,7 @@ function createPhase7HUD(player, physicsObjects, camera) {
           });
 
           drawText({
-            text: "TEST: Pick up light Balls (94% speed) vs Heavy Box (73% speed)!",
+            text: "TEST: Pick up Balls (90% speed), Crates (88%), or Heavy Box (73%)!",
             pos: vec2(28, 94),
             size: 12,
             color: rgb(185, 205, 240),

@@ -219,9 +219,9 @@ export const COMBAT_CONFIG = {
   // Brief impact freeze-frame ("hit-stop") duration in seconds when a punch lands
   HIT_STOP_DURATION: 0.045,
 
-  // --- Milestone 7: Pick-Up & Carry System Configuration (Section 8) ---
+  // --- Phase 7: Pick-Up & Carry System Configuration (Section 8) ---
   // Maximum distance (in 2.5D floor pixels) to detect and grab an object with E
-  PICKUP_RANGE: 58,
+  PICKUP_RANGE: 68,
 
   // Duration of the hoist-up animation when picking up an object (in seconds)
   PICKUP_ANIM_DURATION: 0.20,
@@ -235,10 +235,10 @@ export const COMBAT_CONFIG = {
 };
 
 // ----------------------------------------------------------------------------
-// MILESTONE 6: PHYSICS OBJECTS CONFIGURATION (Section 10 & 11)
+// PHASE 6: PHYSICS OBJECTS CONFIGURATION (Section 10 & 11)
 // ----------------------------------------------------------------------------
 // Every physics object has configurable: mass, friction, bounce, throwForce, damage.
-// - Lower mass (0.45) = flies far when punched/pushed.
+// - Lower mass (0.78) = lively bounce when punched/thrown, but heavy enough not to roll away on touch.
 // - Higher mass (2.6) = heavy resistance, pushes lighter objects out of the way!
 // ----------------------------------------------------------------------------
 export const OBJECTS_CONFIG = {
@@ -259,9 +259,9 @@ export const OBJECTS_CONFIG = {
   BALL: {
     type: "ball",
     label: "Brawler Sphere",
-    mass: 0.45,
-    friction: 220,
-    bounce: 0.78,
+    mass: 0.78,
+    friction: 540,
+    bounce: 0.75,
     throwForce: 650,
     damage: 15,
     footprintRadius: 17,
