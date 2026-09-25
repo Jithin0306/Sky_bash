@@ -27,14 +27,16 @@ function moveToward(current, target, maxDelta) {
  * into the abyss (Milestone 13 will hook this into the Round Over system).
  */
 export function respawnPlayer(player) {
-  player.pos.x = ARENA_CONFIG.CENTER_X;
-  player.pos.y = ARENA_CONFIG.CENTER_Y;
+  player.pos.x = player.homePos ? player.homePos.x : ARENA_CONFIG.CENTER_X;
+  player.pos.y = player.homePos ? player.homePos.y : ARENA_CONFIG.CENTER_Y;
   player.velocity = vec2(0, 0);
   player.knockback = vec2(0, 0);
   player.zHeight = 220; // Drop in smoothly from the sky!
   player.velZ = 0;
   player.isGrounded = false;
   player.isFallingInVoid = false;
+  player.hasTriggeredRingOutBanner = false;
+  player.health = player.maxHealth || 100;
   player.state = "fall";
 }
 

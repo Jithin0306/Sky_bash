@@ -12,7 +12,10 @@
 
 import { PLAYER_CONFIG, ARENA_CONFIG, COMBAT_CONFIG } from "../config/gameConfig.js";
 import { updatePlayerMovement } from "./playerMovement.js";
-import { updatePlayerCombat } from "./playerCombat.js";
+import {
+  updatePlayerCombat,
+  dropHeldObject,
+} from "./playerCombat.js";
 import { isPointOnArena } from "../scenes/arena.js";
 import {
   updateDepthSort,
@@ -25,12 +28,12 @@ import { drawHeavyBoxVisuals } from "../objects/heavyBox.js";
 import { drawBombVisuals } from "../objects/bomb.js";
 
 /**
- * Spawns a Player character at the specified (x, y) arena coordinates.
+ * Spawns a Player or AI Brawler character at the specified (x, y) arena coordinates.
  *
  * @param {number} spawnX - Initial X coordinate on the arena floor
  * @param {number} spawnY - Initial Y coordinate on the arena floor
- * @param {Object} options - Optional overrides (e.g., playerId, custom colors)
- * @returns {Object} The KAPLAY player entity
+ * @param {Object} options - Optional overrides (playerId, displayName, colors, ringColor, isAI)
+ * @returns {Object} The KAPLAY fighter entity
  */
 export function createPlayer(
   spawnX = ARENA_CONFIG.CENTER_X,
@@ -38,6 +41,7 @@ export function createPlayer(
   options = {}
 ) {
   const palette = options.colors || PLAYER_CONFIG.COLORS;
+  const ringColor = options.ringColor || [25, 145, 215];
 
   const player = add([
     // KAPLAY built-in position component (ground footprint X, Y)
@@ -45,13 +49,26 @@ export function createPlayer(
     // Initial z-layer (dynamically updated every frame by updateDepthSort!)
     z(Math.round(spawnY)),
     "player",
+    "fighter",
+    "punchable",
     {
-      // --- Multiplayer-Ready State Properties (Section 27) ---
+      // --- Multiplayer & AI State Properties (Section 27) ---
       playerId: options.playerId || 1,
+      displayName: options.displayName || "VOLT",
+      isAI: Boolean(options.isAI),
+      aiStateLabel: "IDLE",
+      ringColor,
+      homePos: vec2(spawnX, spawnY),
+      footprintRadius: PLAYER_CONFIG.FOOTPRINT_RADIUS,
+      propHeight: 56,
       velocity: vec2(0, 0),
       knockback: vec2(0, 0),
       facing: vec2(0, 1), // Starts facing South (toward the camera)
       health: 100,
+      maxHealth: 100,
+      ringOutCount: 0,
+      hasTriggeredRingOutBanner: false,
+      hitFlashTimer: 0,
       state: "idle",
       heldObject: null,
       nearestPickupCandidate: null,
@@ -60,7 +77,7 @@ export function createPlayer(
       animTimer: 0,
       cameraRef: options.camera || null,
 
-      // --- Milestone 3: 2.5D Vertical Jump & Ground State ---
+      // --- Phase 3: 2.5D Vertical Jump & Ground State ---
       zHeight: 0,           // Height in pixels above (>0) or below (<0) the arena floor
       velZ: 0,              // Vertical velocity in pixels/sec
       isGrounded: true,     // True when standing on the circular arena surface
@@ -70,7 +87,7 @@ export function createPlayer(
       justLanded: false,
       landImpactSpeed: 0,
 
-      // --- Milestone 5: Melee Punch & Combat State ---
+      // --- Phase 5: Melee Punch & Combat State ---
       isPunching: false,
       punchTimer: 0,
       punchCooldownTimer: 0,
@@ -78,7 +95,7 @@ export function createPlayer(
       hitStopTimer: 0,      // Brief 45ms freeze-frame when a heavy hit lands
       hitTargetsThisSwing: new Set(),
 
-      // Input state snapshot fed in each frame
+      // Input state snapshot fed in each frame (by keyboard OR by enemyAI.js!)
       input: {
         moveX: 0,
         moveY: 0,
@@ -91,10 +108,36 @@ export function createPlayer(
       },
 
       /**
-       * Feeds a new input snapshot into this player.
+       * Feeds a new input snapshot into this fighter.
        */
       setInput(newInputState) {
         this.input = newInputState;
+      },
+
+      /**
+       * Phase 10: Triggered when another fighter's melee punch lands on this character!
+       */
+      onPunchHit(dir, force) {
+        if (this.isFallingInVoid) return;
+
+        // If carrying an object overhead, a direct punch knocks it loose!
+        if (this.heldObject) {
+          dropHeldObject(this);
+        }
+
+        this.hitFlashTimer = 0.16;
+        this.health = Math.max(0, this.health - 14);
+        this.landingSquash = 0.35;
+
+        // Apply extra knockback boost as health gets lower (arcade brawler style!)
+        const lowHpBoost = 1 + (1 - this.health / this.maxHealth) * 0.45;
+        const effectiveForce = force * 0.92 * lowHpBoost;
+
+        this.knockback.x = dir.x * effectiveForce;
+        this.knockback.y =
+          dir.y * effectiveForce * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+        this.velZ = 210;
+        this.isGrounded = false;
       },
 
       /**
@@ -102,6 +145,9 @@ export function createPlayer(
        */
       update() {
         const delta = dt();
+        if (this.hitFlashTimer > 0) {
+          this.hitFlashTimer = Math.max(0, this.hitFlashTimer - delta);
+        }
 
         // Update combat first (checks punch input, active hitbox, and hit-stop)
         updatePlayerCombat(this, delta, this.cameraRef);
@@ -114,7 +160,7 @@ export function createPlayer(
           }
         }
 
-        // Milestone 4: Update 2.5D depth layer (z = pos.y, or -60 behind North cliff)
+        // Phase 4: Update 2.5D depth layer (z = pos.y, or -60 behind North cliff)
         updateDepthSort(this);
       },
 
@@ -221,7 +267,7 @@ function drawCharacterVisuals(player, C) {
     zHeight: player.zHeight,
     overArena,
     isFallingInVoid: isPanicFall,
-    ringColor: [25, 145, 215],
+    ringColor: player.ringColor || [25, 145, 215],
   });
 
   // --------------------------------------------------------------------------
@@ -595,7 +641,7 @@ function drawCharacterVisuals(player, C) {
       color: rgb(110, 225, 255),
     });
 
-    // Floating cartoon "AAAH!!" panic tag above Volt's head
+    // Floating cartoon "AAAH!!" panic tag above helmet
     drawRect({
       pos: vec2(-28, -88),
       width: 56,
@@ -609,6 +655,44 @@ function drawCharacterVisuals(player, C) {
       pos: vec2(-21, -84),
       size: 11,
       color: rgb(220, 40, 40),
+    });
+  } else {
+    // ------------------------------------------------------------------------
+    // J. PHASE 10: COMPACT OVERHEAD FIGHTER TAG & MINI HEALTH BAR
+    // ------------------------------------------------------------------------
+    const tagBaseY = isCarrying ? -110 : -79;
+    const hpRatio = clamp((player.health || 0) / (player.maxHealth || 100), 0, 1);
+    const barColor = player.isAI
+      ? rgb(245, 78, 68)
+      : rgb(55, 225, 210);
+
+    // Mini dark bar background
+    drawRect({
+      pos: vec2(-20, tagBaseY),
+      width: 40,
+      height: 5,
+      radius: 2,
+      color: rgb(16, 20, 34),
+      outline: { width: 1.2, color: rgb(45, 55, 82) },
+    });
+
+    // Live HP fill
+    if (hpRatio > 0) {
+      drawRect({
+        pos: vec2(-19, tagBaseY + 1),
+        width: Math.max(2, 38 * hpRatio),
+        height: 3,
+        radius: 1.5,
+        color: barColor,
+      });
+    }
+
+    // Fighter name label ("VOLT" or "PYRO")
+    drawText({
+      text: player.displayName || "VOLT",
+      pos: vec2(-14, tagBaseY - 10),
+      size: 9,
+      color: player.isAI ? rgb(255, 175, 145) : rgb(155, 240, 255),
     });
   }
 

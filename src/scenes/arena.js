@@ -35,6 +35,10 @@ import { createCrate } from "../objects/crate.js";
 import { createBall } from "../objects/ball.js";
 import { createHeavyBox } from "../objects/heavyBox.js";
 import { createBomb } from "../objects/bomb.js";
+import {
+  createEnemyAIController,
+  PYRO_BOT_PALETTE,
+} from "../ai/enemyAI.js";
 
 /**
  * Converts a 2D screen/floor coordinate (x, y) into its true 2.5D radial distance
@@ -73,16 +77,49 @@ export function registerArenaScene() {
     // 3. Create the 2.5D Floating Circular Arena
     createFloatingArena();
 
-    // 4. Spawn our playable character ("Volt") at the center of the arena
-    const player = createPlayer(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y + 45, {
-      camera,
-    });
+    // 4. Spawn playable character ("VOLT") & Phase 10 AI Rival ("PYRO")!
+    const player = createPlayer(
+      ARENA_CONFIG.CENTER_X - 135,
+      ARENA_CONFIG.CENTER_Y + 65,
+      {
+        playerId: 1,
+        displayName: "VOLT",
+        ringColor: [25, 175, 235],
+        camera,
+      }
+    );
+
+    const enemyBot = createPlayer(
+      ARENA_CONFIG.CENTER_X + 135,
+      ARENA_CONFIG.CENTER_Y - 35,
+      {
+        playerId: 2,
+        displayName: "PYRO",
+        isAI: true,
+        colors: PYRO_BOT_PALETTE,
+        ringColor: [245, 78, 65],
+        camera,
+      }
+    );
+    enemyBot.facing = vec2(-1, 0.3);
 
     // 5. Spawn 2.5D Depth-Sorted & Punchable Arena Totems + Sparring Dummy
     const props = createDepthTestProps();
 
     // 6. Phase 6 & 9: Spawn 2.5D Physics Objects (Crates, Balls, Heavy Box, & Fuse Bombs!)
     const physicsObjects = spawnArenaPhysicsObjects();
+
+    // 7. Phase 10: Initialize Autonomous AI Controller for Pyro
+    const aiController = createEnemyAIController(
+      enemyBot,
+      player,
+      physicsObjects
+    );
+
+    // Press T anytime to pause/resume Pyro's AI brain!
+    onKeyPress("t", () => {
+      aiController.enabled = !aiController.enabled;
+    });
 
     // Press R anytime to drop all physics objects fresh from the sky!
     onKeyPress("r", () => {
@@ -103,28 +140,48 @@ export function registerArenaScene() {
       }
     });
 
-    // 7. Connect local keyboard/mouse input, 2.5D physics engine, & camera each frame
+    const fighters = [player, enemyBot];
+
+    // 8. Connect local keyboard/mouse input, AI brain, 2.5D physics engine, & camera each frame
     onUpdate(() => {
       const inputState = readLocalPlayerInput();
       player.setInput(inputState);
 
-      // Step the 2.5D Physics Engine (gravity, bounce, rolling, mass collisions,
-      // Bomb fuse countdowns & radial explosions, and solid Orb Stand collisions!)
-      updatePhysicsSystem(player, physicsObjects, props, camera);
+      // Step Pyro's autonomous AI decision tree
+      const aiInput = aiController.computeInput(dt());
+      enemyBot.setInput(aiInput);
 
-      resolvePropFootprintCollisions(player, props);
-      camera.setTarget(player.pos);
+      // Step the 2.5D Physics Engine for both fighters, objects, bombs, & props
+      updatePhysicsSystem(fighters, physicsObjects, props, camera);
 
-      // Subtle camera thud & landing ring when landing from a jump/drop
-      if (player.justLanded && player.landImpactSpeed > 200) {
-        camera.shake(3.5);
-        spawnLandingRing(player.pos.x, player.pos.y);
+      for (const f of fighters) {
+        resolvePropFootprintCollisions(f, props);
+
+        // Trigger "KO! RING OUT!" banner & score point when a fighter falls off the cliff!
+        if (f.isFallingInVoid && !f.hasTriggeredRingOutBanner) {
+          f.hasTriggeredRingOutBanner = true;
+          spawnRingOutBanner(f.pos.x, f.pos.y);
+          camera.shake(10.5);
+          if (f === enemyBot) {
+            player.ringOutCount += 1;
+          } else {
+            enemyBot.ringOutCount += 1;
+          }
+        }
+
+        // Subtle camera thud & landing ring when landing from a jump/drop
+        if (f.justLanded && f.landImpactSpeed > 200) {
+          camera.shake(3.0);
+          spawnLandingRing(f.pos.x, f.pos.y);
+        }
       }
+
+      camera.setTarget(player.pos);
     });
 
-    // 8. Create the interactive E-Grab highlight & Phase 9 HUD
+    // 9. Create the interactive E-Grab highlight & Phase 10 HUD
     createPickupPromptRenderer(player);
-    createPhase9HUD(player, physicsObjects, camera);
+    createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera);
   });
 }
 
@@ -917,9 +974,9 @@ function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the Phase 9 HUD card with live Bomb Fuse & Blast System telemetry.
+ * Displays the Phase 10 HUD card with live VOLT vs PYRO AI Brawler telemetry.
  */
-function createPhase9HUD(player, physicsObjects, camera) {
+function createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera) {
   let isZoomedIn = false;
 
   onKeyPress("c", () => camera.shake(12));
@@ -936,7 +993,7 @@ function createPhase9HUD(player, physicsObjects, camera) {
         // Compact top-left HUD card
         drawRect({
           pos: vec2(14, 14),
-          width: 505,
+          width: 525,
           height: 114,
           radius: 10,
           color: rgb(12, 16, 28),
@@ -948,69 +1005,32 @@ function createPhase9HUD(player, physicsObjects, camera) {
         });
 
         drawText({
-          text: "PHASE 9: SKY FUSE BOMBS & EXPLOSIVE BLAST SYSTEM",
+          text: "PHASE 10: ENEMY AI BOT OPPONENT (VOLT VS PYRO AI)",
           pos: vec2(28, 26),
           size: 13,
-          color: rgb(255, 195, 75),
+          color: rgb(86, 220, 255),
         });
 
         drawText({
-          text: "E : Grab & Light Bomb  |  K / J / Click : Throw  |  B : Ignite Bombs",
+          text: "E : Grab  |  J / K / Click : Punch & Throw  |  T : Toggle AI  |  B : Bombs",
           pos: vec2(28, 48),
           size: 12,
           color: rgb(210, 222, 245),
         });
 
-        const litBombs = physicsObjects.filter(
-          (o) => o.objectType === "bomb" && o.isLit && !o.isExplodedCooldown
-        );
-        const held = player.heldObject;
+        drawText({
+          text: `VOLT HP: ${player.health}% (KOs: ${player.ringOutCount})   |   PYRO AI HP: ${enemyBot.health}% (KOs: ${enemyBot.ringOutCount})`,
+          pos: vec2(28, 72),
+          size: 11.5,
+          color: rgb(255, 225, 85),
+        });
 
-        if (held && held.objectType === "bomb") {
-          const secs = Math.max(0.1, held.fuseTimer || 0).toFixed(1);
-          drawText({
-            text: `DANGER! HOLDING LIVE BOMB — DETONATION IN: ${secs}s!`,
-            pos: vec2(28, 72),
-            size: 11.5,
-            color: rgb(255, 95, 75),
-          });
-
-          drawText({
-            text: "THROW IT NOW (K / J / Click) before it explodes in your hands!",
-            pos: vec2(28, 94),
-            size: 12,
-            color: rgb(255, 225, 85),
-          });
-        } else if (litBombs.length > 0) {
-          const minFuse = Math.min(...litBombs.map((b) => b.fuseTimer || 3.5));
-          drawText({
-            text: `LIVE BOMB ON COURT! Fuse: ${Math.max(0.1, minFuse).toFixed(1)}s  |  Blast Radius: 145px`,
-            pos: vec2(28, 72),
-            size: 11.5,
-            color: rgb(255, 115, 75),
-          });
-
-          drawText({
-            text: "WATCH THE RED BLAST RING! Lure the Dummy inside or stand back!",
-            pos: vec2(28, 94),
-            size: 12,
-            color: rgb(255, 220, 95),
-          });
-        } else {
-          drawText({
-            text: `VOLT HP: ${player.health}%  |  2 FUSE BOMBS ACTIVE (Grab with E or Punch to Light!)`,
-            pos: vec2(28, 72),
-            size: 11.5,
-            color: rgb(115, 255, 210),
-          });
-
-          drawText({
-            text: "TEST: Grab a Bomb (E) to light its 3.5s fuse & Throw (K/Click) at Dummy!",
-            pos: vec2(28, 94),
-            size: 12,
-            color: rgb(185, 205, 240),
-          });
-        }
+        drawText({
+          text: `PYRO AI BRAIN: ${enemyBot.aiStateLabel}  —  Knock Pyro off the cliff for a RING OUT!`,
+          pos: vec2(28, 94),
+          size: 12,
+          color: aiController.enabled ? rgb(110, 245, 165) : rgb(255, 145, 110),
+        });
       },
     },
   ]);

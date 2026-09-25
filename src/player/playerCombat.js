@@ -330,7 +330,7 @@ function checkPunchHitbox(player, camera) {
   const targets = get("punchable");
 
   for (const target of targets) {
-    if (target.isCarried) continue;
+    if (target === player || target.isCarried || target.isExplodedCooldown) continue;
     if (player.hitTargetsThisSwing.has(target)) continue;
 
     const targetZ = target.zHeight || 0;

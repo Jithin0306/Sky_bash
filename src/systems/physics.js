@@ -29,15 +29,20 @@ import { updateBombSystem } from "../objects/bomb.js";
  * @param {Object} camera - Arena camera controller (for heavy landing & throw impact shakes)
  */
 export function updatePhysicsSystem(
-  player,
+  fighters,
   objects,
   props = [],
   camera = null
 ) {
   const delta = dt();
+  const fighterList = Array.isArray(fighters)
+    ? fighters
+    : fighters
+    ? [fighters]
+    : [];
 
   // 0. Phase 9: Step Bomb fuses, radial explosions, & chain-reaction detonations!
-  updateBombSystem(player, objects, props, camera);
+  updateBombSystem(fighterList, objects, props, camera);
 
   // 1. Update each individual object's motion, gravity, bounce, & cliff fall
   for (const obj of objects) {
@@ -51,13 +56,18 @@ export function updatePhysicsSystem(
   //    bounce/slide solidly around the Crystal Orb Stands & Sparring Dummy!)
   resolveObjectToPropCollisions(objects, props, camera);
 
-  // 4. Resolve Player-vs-Object pushing & footprint collisions
-  if (player && !player.isFallingInVoid) {
-    resolvePlayerToObjectInteractions(player, objects);
-    // Re-check Object-vs-Prop after player pushing so the player can NEVER
-    // wedge or shove a Heavy Box inside a Crystal Orb Stand!
-    resolveObjectToPropCollisions(objects, props, camera);
+  // 4. Resolve Fighter-vs-Fighter body collisions (Volt vs Pyro AI!)
+  resolveFighterToFighterCollisions(fighterList);
+
+  // 5. Resolve Fighter-vs-Object pushing & Thrown Projectile-vs-Fighter impacts!
+  for (const fighter of fighterList) {
+    if (fighter && !fighter.isFallingInVoid) {
+      resolvePlayerToObjectInteractions(fighter, objects, camera);
+    }
   }
+
+  // Re-check Object-vs-Prop after fighter pushing so nobody can wedge a Heavy Box inside an Orb Stand!
+  resolveObjectToPropCollisions(objects, props, camera);
 }
 
 /**
@@ -436,16 +446,48 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
 }
 
 /**
- * Resolves Player-vs-Object pushing and collision:
- * - Light objects (Ball, mass 0.45) get dribbled/kicked briskly when you run into them!
- * - Medium objects (Crate, mass 1.0) slide steadily when pushed!
- * - Heavy objects (Heavy Box, mass 2.6) strongly resist pushing!
+ * Phase 10: Resolves solid 2.5D body collisions between fighters (Volt vs Pyro AI)
+ * so they cannot walk through each other and can body-check near the cliff rim!
  */
-function resolvePlayerToObjectInteractions(player, objects) {
-  for (const obj of objects) {
-    if (obj.isCarried || obj.isFallingInVoid) continue;
+function resolveFighterToFighterCollisions(fighterList) {
+  for (let i = 0; i < fighterList.length; i++) {
+    const a = fighterList[i];
+    if (!a || a.isFallingInVoid) continue;
 
-    // Allow the player to jump clean OVER the object if zHeight > object's top!
+    for (let j = i + 1; j < fighterList.length; j++) {
+      const b = fighterList[j];
+      if (!b || b.isFallingInVoid) continue;
+
+      if (Math.abs((a.zHeight || 0) - (b.zHeight || 0)) > 46) continue;
+
+      const dx = b.pos.x - a.pos.x;
+      const dy = (b.pos.y - a.pos.y) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+      const dist = Math.hypot(dx, dy);
+      const minDist = PLAYER_CONFIG.FOOTPRINT_RADIUS * 2;
+
+      if (dist < minDist && dist > 0.001) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const overlap = (minDist - dist) * 0.5;
+
+        a.pos.x -= nx * overlap;
+        a.pos.y -= ny * overlap * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+
+        b.pos.x += nx * overlap;
+        b.pos.y += ny * overlap * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+      }
+    }
+  }
+}
+
+/**
+ * Resolves Fighter-vs-Object pushing AND Thrown Projectile-vs-Fighter impacts!
+ */
+function resolvePlayerToObjectInteractions(player, objects, camera = null) {
+  for (const obj of objects) {
+    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown) continue;
+
+    // Allow the fighter to jump clean OVER the object if zHeight > object's top!
     if (player.zHeight > obj.zHeight + obj.propHeight - 8) continue;
 
     const dx = obj.pos.x - player.pos.x;
@@ -458,11 +500,70 @@ function resolvePlayerToObjectInteractions(player, objects) {
       const ny = dy / dist;
       const overlap = minDist - dist;
 
-      // How much the object yields vs how much the player is stopped (based on mass)
+      const objSpeed = Math.hypot(
+        obj.velocity.x,
+        obj.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+      );
+
+      // Phase 8 & 10: Check if `obj` is a live THROWN PROJECTILE hitting an opponent fighter!
+      if (
+        obj.isThrownProjectile &&
+        obj.thrower !== player &&
+        !obj.throwHitSet.has(player) &&
+        objSpeed > 65
+      ) {
+        obj.throwHitSet.add(player);
+
+        // Knock the fighter in the direction the projectile was flying!
+        const hitDirX = -nx;
+        const hitDirY = -ny;
+        const dmg = obj.damage || 25;
+        player.health = Math.max(0, (player.health || 100) - dmg);
+        player.hitFlashTimer = 0.20;
+        player.landingSquash = 0.38;
+
+        const lowHpBoost = 1 + (1 - player.health / (player.maxHealth || 100)) * 0.45;
+        const knockForce =
+          (285 + objSpeed * 0.65) * Math.sqrt(obj.mass || 1.0) * lowHpBoost;
+
+        player.knockback.x = hitDirX * knockForce;
+        player.knockback.y =
+          hitDirY * knockForce * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+        player.velZ = 225 * Math.sqrt((obj.mass || 1.0) * 0.75);
+        player.isGrounded = false;
+
+        // Ricochet the projectile off the hit fighter
+        obj.velocity.x *= -0.35;
+        obj.velocity.y *= -0.35;
+        obj.velZ = 150;
+        obj.isGrounded = false;
+        obj.squashFactor = 0.30;
+        obj.hitFlashTimer = 0.14;
+
+        if (camera) {
+          camera.shake(obj.mass >= 2.0 ? 12.0 : 8.5);
+        }
+
+        const impactWord =
+          obj.objectType === "heavyBox"
+            ? "CRUSH!"
+            : obj.objectType === "ball"
+            ? "BONK!"
+            : "SMASH!";
+
+        spawnHitImpactVFX(
+          player.pos.x,
+          player.pos.y,
+          (player.zHeight || 0) + 28,
+          impactWord
+        );
+        continue;
+      }
+
+      // Standard grounded pushing interaction
       const objectYield = clamp(1 / (0.6 + obj.mass), 0.22, 0.78);
       const playerYield = 1 - objectYield;
 
-      // Separate positions
       player.pos.x -= nx * overlap * playerYield;
       player.pos.y -=
         ny * overlap * playerYield * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
@@ -471,8 +572,6 @@ function resolvePlayerToObjectInteractions(player, objects) {
       obj.pos.y +=
         ny * overlap * objectYield * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
-      // Transfer gentle push velocity from the walking player into the object
-      // (Softened to 0.36 so walking up to a Ball nudges it slightly instead of kicking it out of grab reach!)
       const pushSpeed = Math.hypot(
         player.velocity.x,
         player.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE

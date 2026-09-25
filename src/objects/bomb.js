@@ -83,8 +83,13 @@ export function createBomb(x, y, startZ = 240) {
  * Steps the fuse timer and handles detonation & sky-respawn for all Bomb objects.
  * Called every frame from `updatePhysicsSystem()` in `src/systems/physics.js`.
  */
-export function updateBombSystem(player, objects, props, camera) {
+export function updateBombSystem(fighters, objects, props, camera) {
   const delta = dt();
+  const fighterList = Array.isArray(fighters)
+    ? fighters
+    : fighters
+    ? [fighters]
+    : [];
 
   for (const obj of objects) {
     if (obj.objectType !== "bomb") continue;
@@ -110,7 +115,7 @@ export function updateBombSystem(player, objects, props, camera) {
     if (obj.isLit) {
       obj.fuseTimer -= delta;
       if (obj.fuseTimer <= 0) {
-        detonateBomb(obj, player, objects, props, camera);
+        detonateBomb(obj, fighterList, objects, props, camera);
       }
     }
   }
@@ -119,8 +124,8 @@ export function updateBombSystem(player, objects, props, camera) {
 /**
  * Triggers a massive 2.5D radial explosion at the bomb's current position!
  */
-export function detonateBomb(bomb, player, objects, props, camera) {
-  // If Volt was still holding the bomb when the timer ran out, force-release it at Volt's head!
+export function detonateBomb(bomb, fighterList, objects, props, camera) {
+  // If a fighter was still holding the bomb when the timer ran out, force-release it at their head!
   let blastX = bomb.pos.x;
   let blastY = bomb.pos.y;
   let blastZ = Math.max(0, bomb.zHeight);
@@ -149,10 +154,18 @@ export function detonateBomb(bomb, player, objects, props, camera) {
   }
   spawnExplosionVFX(blastX, blastY, blastZ, radius);
 
-  // 2. Apply radial 2.5D blast knockback to the Player (Volt)
-  if (player && !player.isFallingInVoid) {
-    const dx = player.pos.x - blastX;
-    const dy = (player.pos.y - blastY) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+  // 2. Apply radial 2.5D blast knockback to ALL Fighters (Volt & Pyro AI!)
+  const fighters = Array.isArray(fighterList)
+    ? fighterList
+    : fighterList
+    ? [fighterList]
+    : [];
+
+  for (const fighter of fighters) {
+    if (!fighter || fighter.isFallingInVoid) continue;
+
+    const dx = fighter.pos.x - blastX;
+    const dy = (fighter.pos.y - blastY) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
     const dist = Math.hypot(dx, dy);
 
     if (dist <= radius) {
@@ -161,13 +174,17 @@ export function detonateBomb(bomb, player, objects, props, camera) {
       const ny = dist > 1 ? dy / dist : 1;
 
       const launchForce = maxForce * 0.92 * falloff;
-      player.knockback.x += nx * launchForce;
-      player.knockback.y +=
+      fighter.knockback.x += nx * launchForce;
+      fighter.knockback.y +=
         ny * launchForce * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
-      player.velZ = Math.max(player.velZ, 315 * falloff);
-      player.isGrounded = false;
-      player.landingSquash = -0.35;
-      player.health = Math.max(0, (player.health || 100) - Math.round(bomb.damage * falloff));
+      fighter.velZ = Math.max(fighter.velZ, 315 * falloff);
+      fighter.isGrounded = false;
+      fighter.landingSquash = -0.35;
+      fighter.hitFlashTimer = 0.24;
+      fighter.health = Math.max(
+        0,
+        (fighter.health || 100) - Math.round(bomb.damage * falloff)
+      );
     }
   }
 
