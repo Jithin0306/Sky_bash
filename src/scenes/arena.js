@@ -37,6 +37,7 @@ import { createHeavyBox } from "../objects/heavyBox.js";
 import { createBomb } from "../objects/bomb.js";
 import { createStickyBomb } from "../objects/stickyBomb.js";
 import { createMine } from "../objects/mine.js";
+import { createPowerUp, updatePowerUpSystem } from "../objects/powerup.js";
 import {
   createEnemyAIController,
   PYRO_BOT_PALETTE,
@@ -66,9 +67,9 @@ export function isPointOnArena(x, y, margin = 0) {
 }
 
 /**
- * Registers the "arena" scene with KAPLAY (NORMAL GAME — Player vs AI Match Mode).
- * Developer test props (Sparring Dummy) and debug hotkeys (T/B/R/1-6) are strictly
- * separated into the Developer-Only "devTest" scene!
+ * Registers the "arena" scene with KAPLAY (PHASE 11: Complete Normal Game Match Mode).
+ * Includes 3 Stock Lives per Fighter, 99s Match Clock, Periodic Sky Power-Up Drops,
+ * and a Victory / Rematch Podium!
  */
 export function registerArenaScene() {
   scene("arena", () => {
@@ -114,7 +115,14 @@ export function registerArenaScene() {
     // 6. Spawn 2.5D Arena Physics Objects & Explosives with natural staggered sky-drop timers
     const physicsObjects = spawnArenaPhysicsObjects();
 
-    // 7. Initialize Autonomous AI Controller for Pyro
+    // 7. Phase 11: Active Sky Power-Up Orbs ("gloves", "shield", "medkit")
+    const activePowerUps = [];
+    let nextPowerUpTimer = 8.5;
+    let matchTimer = 99.0;
+    let matchOver = false;
+    let winnerName = "";
+
+    // 8. Initialize Autonomous AI Controller for Pyro
     const aiController = createEnemyAIController(
       enemyBot,
       player,
@@ -126,35 +134,119 @@ export function registerArenaScene() {
       go("menu");
     });
 
+    // When Match is Over, press SPACE or ENTER for an instant Rematch!
+    onKeyPress("space", () => {
+      if (matchOver) go("arena");
+    });
+    onKeyPress("enter", () => {
+      if (matchOver) go("arena");
+    });
+
     const fighters = [player, enemyBot];
 
-    // 8. Connect local keyboard/mouse input, AI brain, 2.5D physics engine, & camera each frame
+    // Helper to deduct 1 Stock Life, award a KO point, and check for Victory!
+    function handleFighterKnockout(victim) {
+      victim.lives = Math.max(0, (victim.lives ?? 3) - 1);
+      spawnRingOutBanner(victim.pos.x, victim.pos.y);
+
+      if (victim === enemyBot) {
+        player.ringOutCount += 1;
+      } else {
+        enemyBot.ringOutCount += 1;
+      }
+
+      if (victim.lives <= 0 && !matchOver) {
+        matchOver = true;
+        aiController.enabled = false;
+        winnerName = victim === enemyBot ? "VOLT" : "PYRO";
+      }
+    }
+
+    // 9. Connect local keyboard/mouse input, AI brain, 2.5D physics engine, & Phase 11 Match Loop
     onUpdate(() => {
-      const inputState = readLocalPlayerInput();
+      const delta = dt();
+
+      if (!matchOver) {
+        matchTimer = Math.max(0, matchTimer - delta);
+        if (matchTimer <= 0) {
+          matchOver = true;
+          aiController.enabled = false;
+          if (player.lives > enemyBot.lives) {
+            winnerName = "VOLT";
+          } else if (enemyBot.lives > player.lives) {
+            winnerName = "PYRO";
+          } else {
+            winnerName = player.health >= enemyBot.health ? "VOLT" : "PYRO";
+          }
+        }
+
+        // Periodic Phase 11 Sky Power-Up Drop every 11-15s!
+        nextPowerUpTimer -= delta;
+        if (nextPowerUpTimer <= 0 && activePowerUps.length < 2) {
+          nextPowerUpTimer = rand(11.5, 15.5);
+          const angle = rand(0, Math.PI * 2);
+          const dist = rand(45, ARENA_CONFIG.RADIUS * 0.58);
+          const px = ARENA_CONFIG.CENTER_X + Math.cos(angle) * dist;
+          const py =
+            ARENA_CONFIG.CENTER_Y +
+            Math.sin(angle) * dist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+          activePowerUps.push(createPowerUp(px, py, null, 250));
+        }
+      }
+
+      const inputState = matchOver
+        ? {
+            moveX: 0,
+            moveY: 0,
+            isMoving: false,
+            sprintHeld: false,
+            jumpPressed: false,
+            punchPressed: false,
+            pickupPressed: false,
+            throwPressed: false,
+            dropPressed: false,
+          }
+        : readLocalPlayerInput();
       player.setInput(inputState);
 
       // Step Pyro's autonomous AI decision tree
-      const aiInput = aiController.computeInput(dt());
+      const aiInput = aiController.computeInput(delta);
       enemyBot.setInput(aiInput);
 
-      // Step the 2.5D Physics Engine for both fighters, objects, bombs, & props
+      // Step the 2.5D Physics Engine & Phase 11 Power-Up Collector
       updatePhysicsSystem(fighters, physicsObjects, props, camera);
+      updatePowerUpSystem(fighters, activePowerUps);
 
       for (const f of fighters) {
         resolvePropFootprintCollisions(f, props);
 
-        // Trigger "KO! RING OUT!" banner & score point when a fighter falls off the cliff!
+        // A. Check if fighter fell off the cliff into the Void!
         if (f.isFallingInVoid && !f.hasTriggeredRingOutBanner) {
           f.hasTriggeredRingOutBanner = true;
-          spawnRingOutBanner(f.pos.x, f.pos.y);
-          if (f === enemyBot) {
-            player.ringOutCount += 1;
-          } else {
-            enemyBot.ringOutCount += 1;
+          f.spawnImmunityTimer = 2.2;
+          handleFighterKnockout(f);
+        }
+
+        // B. Check if fighter's HP reached 0% on the arena floor!
+        if (f.health <= 0 && !f.isFallingInVoid && !matchOver) {
+          handleFighterKnockout(f);
+          if (!matchOver) {
+            // Respawn from the sky with fresh HP, Stamina, & 2.2s Golden Spawn Immunity!
+            f.health = 100;
+            f.stamina = 100;
+            f.isStaminaExhausted = false;
+            f.spawnImmunityTimer = 2.2;
+            f.pos.x = f.homePos.x;
+            f.pos.y = f.homePos.y;
+            f.velocity = vec2(0, 0);
+            f.knockback = vec2(0, 0);
+            f.zHeight = 260;
+            f.velZ = 0;
+            f.isGrounded = false;
           }
         }
 
-        // Landing dust ring when landing from a jump/drop (no camera shake!)
+        // Landing dust ring when landing from a jump/drop
         if (f.justLanded && f.landImpactSpeed > 200) {
           spawnLandingRing(f.pos.x, f.pos.y);
         }
@@ -163,9 +255,15 @@ export function registerArenaScene() {
       camera.setTarget(player.pos);
     });
 
-    // 9. Create the interactive E-Grab highlight & clean Normal Match Scoreboard HUD
+    // 10. Create the interactive E-Grab highlight & Phase 11 Match Scoreboard + Victory Overlay
     createPickupPromptRenderer(player);
-    createNormalGameHUD(player, enemyBot);
+    createNormalGameHUD(
+      player,
+      enemyBot,
+      () => matchTimer,
+      () => matchOver,
+      () => winnerName
+    );
   });
 }
 
@@ -976,51 +1074,72 @@ export function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the clean, player-facing Normal Game Arcade Match Scoreboard HUD
- * (VOLT vs PYRO, HP & Stamina bars, KO Score, and controls banner).
+ * Displays the Phase 11 Normal Game Arcade Match Scoreboard HUD
+ * (VOLT vs PYRO, 3 Stock Lives, 99s Match Clock, Power-Up Buffs, & Victory/Rematch Screen).
  */
-function createNormalGameHUD(player, enemyBot) {
+function createNormalGameHUD(
+  player,
+  enemyBot,
+  getMatchTimer,
+  getMatchOver,
+  getWinnerName
+) {
   add([
     fixed(),
     z(1000),
     {
       draw() {
         const cx = GAME_CONFIG.WIDTH * 0.5;
+        const cy = GAME_CONFIG.HEIGHT * 0.5;
+        const secsLeft = Math.ceil(getMatchTimer ? getMatchTimer() : 99);
+        const isMatchOver = getMatchOver ? getMatchOver() : false;
+        const winner = getWinnerName ? getWinnerName() : "VOLT";
 
         // 1. Top-Center VS Match Scoreboard Banner
         drawRect({
-          pos: vec2(cx - 250, 12),
-          width: 500,
-          height: 62,
+          pos: vec2(cx - 265, 12),
+          width: 530,
+          height: 68,
           radius: 10,
           color: rgb(12, 16, 28),
-          opacity: 0.88,
+          opacity: 0.9,
           outline: { width: 2, color: rgb(64, 92, 142) },
         });
 
         // Left Fighter: VOLT (Player 1)
         const p1Hp = clamp((player.health || 0) / 100, 0, 1);
         const p1Stam = clamp((player.stamina ?? 100) / 100, 0, 1);
+        const p1Lives = player.lives ?? 3;
 
         drawText({
           text: `VOLT  (KOs: ${player.ringOutCount})`,
-          pos: vec2(cx - 234, 20),
+          pos: vec2(cx - 248, 19),
           size: 13,
           color: rgb(95, 235, 255),
         });
 
+        // Draw Volt's 3 Stock Life Orbs
+        for (let i = 0; i < 3; i++) {
+          drawCircle({
+            pos: vec2(cx - 118 + i * 16, 25),
+            radius: 5.5,
+            color: i < p1Lives ? rgb(55, 235, 220) : rgb(32, 38, 56),
+            outline: { width: 1.5, color: rgb(15, 22, 36) },
+          });
+        }
+
         // Volt HP Bar
         drawRect({
-          pos: vec2(cx - 234, 38),
-          width: 170,
+          pos: vec2(cx - 248, 37),
+          width: 185,
           height: 10,
           radius: 4,
           color: rgb(24, 30, 48),
         });
         if (p1Hp > 0) {
           drawRect({
-            pos: vec2(cx - 234, 38),
-            width: Math.max(4, 170 * p1Hp),
+            pos: vec2(cx - 248, 37),
+            width: Math.max(4, 185 * p1Hp),
             height: 10,
             radius: 4,
             color: rgb(45, 225, 210),
@@ -1029,16 +1148,16 @@ function createNormalGameHUD(player, enemyBot) {
 
         // Volt Stamina Bar
         drawRect({
-          pos: vec2(cx - 234, 52),
-          width: 170,
+          pos: vec2(cx - 248, 51),
+          width: 185,
           height: 6,
           radius: 3,
           color: rgb(20, 26, 42),
         });
         if (p1Stam > 0) {
           drawRect({
-            pos: vec2(cx - 234, 52),
-            width: Math.max(3, 170 * p1Stam),
+            pos: vec2(cx - 248, 51),
+            width: Math.max(3, 185 * p1Stam),
             height: 6,
             radius: 3,
             color: player.isStaminaExhausted
@@ -1047,41 +1166,78 @@ function createNormalGameHUD(player, enemyBot) {
           });
         }
 
-        // Center "VS" Badge
+        // Active Power-Up Buff Indicator for Volt
+        if ((player.powerGlovesTimer || 0) > 0) {
+          drawText({
+            text: `SUPER GLOVES (${Math.ceil(player.powerGlovesTimer)}s)`,
+            pos: vec2(cx - 248, 61),
+            size: 9.5,
+            color: rgb(255, 195, 65),
+          });
+        } else if ((player.shieldTimer || 0) > 0) {
+          drawText({
+            text: `ENERGY SHIELD (${Math.ceil(player.shieldHp)} HP)`,
+            pos: vec2(cx - 248, 61),
+            size: 9.5,
+            color: rgb(95, 240, 255),
+          });
+        }
+
+        // Center Match Clock & "VS" Badge
         drawCircle({
-          pos: vec2(cx, 43),
-          radius: 20,
-          color: rgb(28, 38, 66),
-          outline: { width: 2, color: rgb(255, 215, 75) },
+          pos: vec2(cx, 45),
+          radius: 23,
+          color: rgb(24, 34, 60),
+          outline: {
+            width: 2.5,
+            color: secsLeft <= 15 ? rgb(255, 85, 65) : rgb(255, 215, 75),
+          },
         });
         drawText({
-          text: "VS",
-          pos: vec2(cx - 10, 37),
-          size: 13,
-          color: rgb(255, 225, 85),
+          text: `${secsLeft}`,
+          pos: vec2(cx - (secsLeft >= 10 ? 10 : 5), 35),
+          size: 15,
+          color: secsLeft <= 15 ? rgb(255, 110, 95) : rgb(255, 235, 115),
+        });
+        drawText({
+          text: "TIME",
+          pos: vec2(cx - 12, 52),
+          size: 8.5,
+          color: rgb(185, 205, 235),
         });
 
         // Right Fighter: PYRO (AI Rival)
         const p2Hp = clamp((enemyBot.health || 0) / 100, 0, 1);
+        const p2Lives = enemyBot.lives ?? 3;
 
         drawText({
           text: `PYRO  (KOs: ${enemyBot.ringOutCount})`,
-          pos: vec2(cx + 64, 20),
+          pos: vec2(cx + 64, 19),
           size: 13,
           color: rgb(255, 135, 115),
         });
 
+        // Draw Pyro's 3 Stock Life Orbs
+        for (let i = 0; i < 3; i++) {
+          drawCircle({
+            pos: vec2(cx + 198 + i * 16, 25),
+            radius: 5.5,
+            color: i < p2Lives ? rgb(255, 85, 72) : rgb(32, 38, 56),
+            outline: { width: 1.5, color: rgb(15, 22, 36) },
+          });
+        }
+
         drawRect({
-          pos: vec2(cx + 64, 38),
-          width: 170,
+          pos: vec2(cx + 64, 37),
+          width: 185,
           height: 10,
           radius: 4,
           color: rgb(24, 30, 48),
         });
         if (p2Hp > 0) {
           drawRect({
-            pos: vec2(cx + 64, 38),
-            width: Math.max(4, 170 * p2Hp),
+            pos: vec2(cx + 64, 37),
+            width: Math.max(4, 185 * p2Hp),
             height: 10,
             radius: 4,
             color: rgb(245, 75, 65),
@@ -1089,7 +1245,7 @@ function createNormalGameHUD(player, enemyBot) {
         }
 
         drawText({
-          text: "ARENA BRAWL MODE",
+          text: "3-STOCK ARENA MATCH",
           pos: vec2(cx + 64, 53),
           size: 10,
           color: rgb(185, 198, 225),
@@ -1112,6 +1268,71 @@ function createNormalGameHUD(player, enemyBot) {
           size: 10.5,
           color: rgb(205, 220, 245),
         });
+
+        // 3. PHASE 11 VICTORY / DEFEAT PODIUM OVERLAY WHEN MATCH ENDS!
+        if (isMatchOver) {
+          const playerWon = winner === "VOLT";
+
+          drawRect({
+            pos: vec2(0, 0),
+            width: GAME_CONFIG.WIDTH,
+            height: GAME_CONFIG.HEIGHT,
+            color: rgb(8, 12, 24),
+            opacity: 0.72,
+          });
+
+          drawRect({
+            pos: vec2(cx - 235, cy - 125),
+            width: 470,
+            height: 250,
+            radius: 16,
+            color: rgb(14, 20, 38),
+            opacity: 0.96,
+            outline: {
+              width: 3.5,
+              color: playerWon ? rgb(65, 245, 210) : rgb(255, 85, 75),
+            },
+          });
+
+          drawText({
+            text: playerWon
+              ? "VICTORY!! VOLT WINS THE MATCH!"
+              : "DEFEAT!! PYRO WINS THE MATCH!",
+            pos: vec2(cx - 182, cy - 92),
+            size: 19,
+            color: playerWon ? rgb(95, 255, 215) : rgb(255, 115, 95),
+          });
+
+          drawText({
+            text: `FINAL SCORE ->   VOLT KOs: ${player.ringOutCount} (Lives: ${player.lives})   |   PYRO KOs: ${enemyBot.ringOutCount} (Lives: ${enemyBot.lives})`,
+            pos: vec2(cx - 196, cy - 42),
+            size: 11.5,
+            color: rgb(225, 235, 255),
+          });
+
+          drawRect({
+            pos: vec2(cx - 165, cy + 8),
+            width: 330,
+            height: 46,
+            radius: 10,
+            color: playerWon ? rgb(24, 155, 135) : rgb(185, 55, 55),
+            outline: { width: 2, color: rgb(255, 235, 115) },
+          });
+
+          drawText({
+            text: "PRESS SPACE / ENTER FOR REMATCH",
+            pos: vec2(cx - 138, cy + 25),
+            size: 13.5,
+            color: rgb(255, 255, 255),
+          });
+
+          drawText({
+            text: "Press ESC to return to Main Menu",
+            pos: vec2(cx - 98, cy + 78),
+            size: 11,
+            color: rgb(175, 195, 225),
+          });
+        }
       },
     },
   ]);

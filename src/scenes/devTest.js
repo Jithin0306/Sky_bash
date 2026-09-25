@@ -25,6 +25,7 @@ import { createHeavyBox } from "../objects/heavyBox.js";
 import { createBomb } from "../objects/bomb.js";
 import { createStickyBomb } from "../objects/stickyBomb.js";
 import { createMine } from "../objects/mine.js";
+import { createPowerUp, updatePowerUpSystem } from "../objects/powerup.js";
 import {
   createEnemyAIController,
   PYRO_BOT_PALETTE,
@@ -114,6 +115,10 @@ export function registerDevTestScene() {
       createBall(cx + 145, cy - 55, 210, 0),
       createHeavyBox(cx, cy + 115, 200, 0),
     ];
+    const activePowerUps = [
+      createPowerUp(cx - 210, cy - 75, "gloves", 210),
+      createPowerUp(cx + 210, cy - 75, "shield", 220),
+    ];
 
     // 6. Initialize Pyro AI Controller
     const aiController = createEnemyAIController(
@@ -123,7 +128,7 @@ export function registerDevTestScene() {
     );
 
     let godMode = false;
-    let lastSpawnedLabel = "NONE (Press 1-6 to Spawn)";
+    let lastSpawnedLabel = "NONE (Press 1-9 to Spawn)";
 
     // Helper to spawn any item directly in front of Volt on demand!
     function spawnDevItem(factoryFn, label) {
@@ -142,13 +147,31 @@ export function registerDevTestScene() {
       lastSpawnedLabel = label;
     }
 
-    // --- DEVELOPER SPAWNER HOTKEYS (1 - 6) ---
+    function spawnDevPowerUp(powerType, label) {
+      const dropX = clamp(
+        player.pos.x + player.facing.x * 62,
+        cx - 360,
+        cx + 360
+      );
+      const dropY = clamp(
+        player.pos.y + player.facing.y * 42,
+        cy - 220,
+        cy + 220
+      );
+      activePowerUps.push(createPowerUp(dropX, dropY, powerType, 185));
+      lastSpawnedLabel = label;
+    }
+
+    // --- DEVELOPER SPAWNER HOTKEYS (1 - 9) ---
     onKeyPress("1", () => spawnDevItem(createBomb, "SKY FUSE BOMB"));
     onKeyPress("2", () => spawnDevItem(createStickyBomb, "SLIME STICKY BOMB"));
     onKeyPress("3", () => spawnDevItem(createMine, "PROXIMITY LANDMINE"));
     onKeyPress("4", () => spawnDevItem(createCrate, "SUPPLY CRATE"));
     onKeyPress("5", () => spawnDevItem(createBall, "BRAWLER SPHERE"));
     onKeyPress("6", () => spawnDevItem(createHeavyBox, "IRON HEAVY BOX"));
+    onKeyPress("7", () => spawnDevPowerUp("gloves", "SUPER BOXING GLOVES"));
+    onKeyPress("8", () => spawnDevPowerUp("shield", "ENERGY SHIELD BUBBLE"));
+    onKeyPress("9", () => spawnDevPowerUp("medkit", "SKY MEDKIT +50 HP"));
 
     // --- DEVELOPER DEBUG CONTROLS ---
     // T : Toggle Pyro AI Brain ON / OFF
@@ -228,6 +251,7 @@ export function registerDevTestScene() {
       enemyBot.setInput(aiInput);
 
       updatePhysicsSystem(fighters, physicsObjects, props, camera);
+      updatePowerUpSystem(fighters, activePowerUps);
 
       for (const f of fighters) {
         resolvePropFootprintCollisions(f, props);
@@ -292,8 +316,8 @@ function createDevTestHUD(
         // 1. Top-Left Developer Telemetry & Debug Console Card
         drawRect({
           pos: vec2(14, 12),
-          width: 590,
-          height: 136,
+          width: 630,
+          height: 148,
           radius: 10,
           color: rgb(10, 18, 26),
           opacity: 0.88,
@@ -305,21 +329,28 @@ function createDevTestHUD(
 
         drawText({
           text: "DEVELOPER TEST SANDBOX (AUTHORIZED DEV ACCESS ONLY)",
-          pos: vec2(28, 22),
+          pos: vec2(28, 20),
           size: 13,
           color: rgb(85, 255, 175),
         });
 
         drawText({
-          text: "SPAWN KEYS ->  1 : Bomb  |  2 : Sticky Bomb  |  3 : Landmine  |  4 : Crate  |  5 : Ball  |  6 : Heavy",
-          pos: vec2(28, 44),
+          text: "ITEMS     ->  1 : Bomb | 2 : Sticky Bomb | 3 : Landmine | 4 : Crate | 5 : Ball | 6 : Heavy",
+          pos: vec2(28, 40),
           size: 11,
           color: rgb(255, 230, 110),
         });
 
         drawText({
-          text: "DEBUG KEYS ->  T : Toggle AI  |  B : Detonate All  |  R : Respawn  |  H : Heal  |  G : God Mode",
-          pos: vec2(28, 65),
+          text: "POWER-UPS ->  7 : Super Boxing Gloves  |  8 : Energy Shield Bubble  |  9 : Sky Medkit (+50 HP)",
+          pos: vec2(28, 58),
+          size: 11,
+          color: rgb(125, 255, 215),
+        });
+
+        drawText({
+          text: "DEBUG     ->  T : Toggle AI  |  B : Detonate All  |  R : Respawn  |  H : Heal  |  G : God Mode",
+          pos: vec2(28, 76),
           size: 11,
           color: rgb(205, 225, 250),
         });
@@ -328,14 +359,14 @@ function createDevTestHUD(
         const godTag = getGodMode() ? "ON (INF STAMINA/HP)" : "OFF";
         drawText({
           text: `VOLT HP: ${player.health}% | STAMINA: ${stamPct}% | GOD MODE: ${godTag}   |   PYRO AI: ${enemyBot.aiStateLabel}`,
-          pos: vec2(28, 88),
+          pos: vec2(28, 98),
           size: 11,
           color: rgb(135, 245, 255),
         });
 
         drawText({
           text: `ACTIVE OBJECTS: ${physicsObjects.length}  |  LAST ACTION: ${getLastSpawned()}  |  L : Lock Dev  |  ESC : Menu`,
-          pos: vec2(28, 112),
+          pos: vec2(28, 118),
           size: 11,
           color: rgb(165, 245, 190),
         });

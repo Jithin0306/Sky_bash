@@ -182,7 +182,13 @@ export function detonateBomb(
     : [];
 
   for (const fighter of fighters) {
-    if (!fighter || fighter.isFallingInVoid) continue;
+    if (
+      !fighter ||
+      fighter.isFallingInVoid ||
+      (fighter.spawnImmunityTimer || 0) > 0
+    ) {
+      continue;
+    }
 
     const dx = fighter.pos.x - blastX;
     const dy = (fighter.pos.y - blastY) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
@@ -197,18 +203,27 @@ export function detonateBomb(
       nx /= nLen;
       ny /= nLen;
 
-      const launchForce = maxForce * 0.94 * falloff;
+      const rawDmg = Math.round((bomb.damage || 65) * falloff);
+      let shieldMult = 1.0;
+
+      if ((fighter.shieldTimer || 0) > 0 && (fighter.shieldHp || 0) > 0) {
+        fighter.shieldHp = Math.max(0, fighter.shieldHp - rawDmg);
+        shieldMult = 0.45;
+        if (fighter.shieldHp <= 0) {
+          fighter.shieldTimer = 0;
+        }
+      } else {
+        fighter.health = Math.max(0, (fighter.health || 100) - rawDmg);
+      }
+
+      const launchForce = maxForce * 0.94 * falloff * shieldMult;
       fighter.knockback.x += nx * launchForce;
       fighter.knockback.y +=
         ny * launchForce * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
-      fighter.velZ = Math.max(fighter.velZ, 335 * falloff);
+      fighter.velZ = Math.max(fighter.velZ, 335 * falloff * shieldMult);
       fighter.isGrounded = false;
       fighter.landingSquash = -0.35;
       fighter.hitFlashTimer = 0.24;
-      fighter.health = Math.max(
-        0,
-        (fighter.health || 100) - Math.round((bomb.damage || 65) * falloff)
-      );
     }
   }
 

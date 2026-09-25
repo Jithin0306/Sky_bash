@@ -317,7 +317,8 @@ export function computeThrowLaunchState(player, obj) {
     player.facing.y * launchDist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
   const startZ = Math.max(24, player.zHeight + 48);
 
-  const throwForce = obj.throwForce || 260;
+  const glovesBoost = (player.powerGlovesTimer || 0) > 0 ? 1.28 : 1.0;
+  const throwForce = (obj.throwForce || 260) * glovesBoost;
   const momentumMult = COMBAT_CONFIG.THROW_PLAYER_MOMENTUM_FACTOR;
 
   const vx =
@@ -459,15 +460,25 @@ function checkPunchHitbox(player, camera) {
         kbDirY /= nLen;
       }
 
+      const hasSuperGloves = (player.powerGlovesTimer || 0) > 0;
+      const punchForce =
+        PLAYER_CONFIG.PUNCH_FORCE * (hasSuperGloves ? 1.55 : 1.0);
+      const rawDamage = hasSuperGloves ? 23 : 14;
+
       if (typeof target.onPunchHit === "function") {
-        target.onPunchHit(vec2(kbDirX, kbDirY), PLAYER_CONFIG.PUNCH_FORCE, player);
+        target.onPunchHit(vec2(kbDirX, kbDirY), punchForce, rawDamage);
       }
 
       player.hitStopTimer = COMBAT_CONFIG.HIT_STOP_DURATION;
 
       const impactX = (hitboxCenter.x + target.pos.x) * 0.5;
       const impactY = (hitboxCenter.y + target.pos.y) * 0.5;
-      spawnHitImpactVFX(impactX, impactY, playerPunchZ);
+      spawnHitImpactVFX(
+        impactX,
+        impactY,
+        playerPunchZ,
+        hasSuperGloves ? "MEGA POW!" : "POW!"
+      );
     }
   }
 }
@@ -475,7 +486,7 @@ function checkPunchHitbox(player, camera) {
 /**
  * Spawns a quick cyan/gold sparkle ring when picking up or dropping an object.
  */
-function spawnPickupVFX(x, y, zHeight, tagText = "GRAB!") {
+export function spawnPickupVFX(x, y, zHeight, tagText = "GRAB!") {
   let age = 0;
   const duration = 0.38;
 

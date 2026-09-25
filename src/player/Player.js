@@ -72,6 +72,8 @@ export function createPlayer(
       facing: vec2(0, 1), // Starts facing South (toward the camera)
       health: 100,
       maxHealth: 100,
+      lives: 3,
+      maxLives: 3,
       ringOutCount: 0,
       hasTriggeredRingOutBanner: false,
       hitFlashTimer: 0,
@@ -82,6 +84,12 @@ export function createPlayer(
       throwAnimTimer: 0,
       animTimer: 0,
       cameraRef: options.camera || null,
+
+      // --- Phase 11: Power-Up Buffs & Spawn Immunity ---
+      powerGlovesTimer: 0,
+      shieldTimer: 0,
+      shieldHp: 0,
+      spawnImmunityTimer: 0,
 
       // --- Fighter Carry & Escape Struggle Properties ---
       objectType: "fighter",
@@ -140,10 +148,16 @@ export function createPlayer(
       },
 
       /**
-       * Phase 10: Triggered when another fighter's melee punch lands on this character!
+       * Phase 10 & 11: Triggered when another fighter's melee punch lands on this character!
        */
-      onPunchHit(dir, force) {
-        if (this.isFallingInVoid || this.isCarried) return;
+      onPunchHit(dir, force, rawDamage = 14) {
+        if (
+          this.isFallingInVoid ||
+          this.isCarried ||
+          this.spawnImmunityTimer > 0
+        ) {
+          return;
+        }
 
         // If carrying an object or another fighter overhead, a direct punch knocks them loose!
         if (this.heldObject) {
@@ -151,12 +165,23 @@ export function createPlayer(
         }
 
         this.hitFlashTimer = 0.16;
-        this.health = Math.max(0, this.health - 14);
         this.landingSquash = 0.35;
+
+        let knockMult = 0.92;
+        if (this.shieldTimer > 0 && this.shieldHp > 0) {
+          // Energy Shield Bubble absorbs the hit and halves knockback!
+          this.shieldHp = Math.max(0, this.shieldHp - rawDamage * 1.4);
+          knockMult = 0.42;
+          if (this.shieldHp <= 0) {
+            this.shieldTimer = 0;
+          }
+        } else {
+          this.health = Math.max(0, this.health - rawDamage);
+        }
 
         // Apply extra knockback boost as health gets lower (arcade brawler style!)
         const lowHpBoost = 1 + (1 - this.health / this.maxHealth) * 0.45;
-        const effectiveForce = force * 0.92 * lowHpBoost;
+        const effectiveForce = force * knockMult * lowHpBoost;
 
         this.knockback.x = dir.x * effectiveForce;
         this.knockback.y =
@@ -175,6 +200,21 @@ export function createPlayer(
         }
         if (this.grabImmunityTimer > 0) {
           this.grabImmunityTimer = Math.max(0, this.grabImmunityTimer - delta);
+        }
+        if (this.powerGlovesTimer > 0) {
+          this.powerGlovesTimer = Math.max(0, this.powerGlovesTimer - delta);
+        }
+        if (this.shieldTimer > 0) {
+          this.shieldTimer = Math.max(0, this.shieldTimer - delta);
+          if (this.shieldTimer <= 0) {
+            this.shieldHp = 0;
+          }
+        }
+        if (this.spawnImmunityTimer > 0) {
+          this.spawnImmunityTimer = Math.max(
+            0,
+            this.spawnImmunityTimer - delta
+          );
         }
 
         // --- CARRIED OVERHEAD STATE (Spam keys to break free out of the carrier's hands!) ---
@@ -567,18 +607,27 @@ function drawCharacterVisuals(player, C, isRenderedOverhead = false) {
     );
   }
 
+  const hasPowerGloves = (player.powerGlovesTimer || 0) > 0;
+  const gloveBonusRadius = hasPowerGloves ? 3.2 : 0;
+  const activeGloveColor = hasPowerGloves ? [255, 78, 38] : C.GLOVES;
+  const activeGloveOutline = hasPowerGloves
+    ? rgb(255, 230, 85)
+    : rgb(35, 28, 15);
+
   const leftIsBack = leftHandPos.y < rightHandPos.y;
   const backHandPos = leftIsBack ? leftHandPos : rightHandPos;
   const frontHandPos = leftIsBack ? rightHandPos : leftHandPos;
-  const backHandRadius = leftIsBack ? leftRadius : rightRadius;
-  const frontHandRadius = leftIsBack ? rightRadius : leftRadius;
+  const backHandRadius =
+    (leftIsBack ? leftRadius : rightRadius) + gloveBonusRadius;
+  const frontHandRadius =
+    (leftIsBack ? rightRadius : leftRadius) + gloveBonusRadius;
 
   // Draw Back Glove
   drawCircle({
     pos: backHandPos,
     radius: backHandRadius,
-    color: rgb(...C.GLOVES),
-    outline: { width: 2, color: rgb(35, 28, 15) },
+    color: rgb(...activeGloveColor),
+    outline: { width: hasPowerGloves ? 2.5 : 2, color: activeGloveOutline },
   });
 
   // --------------------------------------------------------------------------
@@ -699,13 +748,13 @@ function drawCharacterVisuals(player, C, isRenderedOverhead = false) {
   }
 
   // --------------------------------------------------------------------------
-  // I. FRONT HAND / GLOVE
+  // I. FRONT HAND / GLOVE + PHASE 11 ENERGY SHIELD BUBBLE & SPAWN IMMUNITY
   // --------------------------------------------------------------------------
   drawCircle({
     pos: frontHandPos,
     radius: frontHandRadius,
-    color: rgb(...C.GLOVES),
-    outline: { width: 2, color: rgb(35, 28, 15) },
+    color: rgb(...activeGloveColor),
+    outline: { width: hasPowerGloves ? 2.5 : 2, color: activeGloveOutline },
   });
 
   if (player.isPunching && frontHandRadius > 7.5) {
@@ -713,6 +762,36 @@ function drawCharacterVisuals(player, C, isRenderedOverhead = false) {
       pos: vec2(frontHandPos.x + lookX * 2, frontHandPos.y - 2),
       radius: frontHandRadius * 0.42,
       color: rgb(255, 250, 210),
+    });
+  }
+
+  // Phase 11: Translucent 2.5D Energy Shield Bubble Dome
+  if (!isRenderedOverhead && (player.shieldTimer || 0) > 0 && (player.shieldHp || 0) > 0) {
+    const shieldPulse = 0.22 + 0.1 * Math.sin(t * 7);
+    drawCircle({
+      pos: vec2(0, -34 + runBob),
+      radius: 31,
+      color: rgb(55, 225, 255),
+      opacity: shieldPulse,
+      outline: {
+        width: 2.5,
+        color: rgb(175, 250, 255),
+        opacity: 0.85,
+      },
+    });
+  }
+
+  // Phase 11: Golden Respawn Invulnerability Ring
+  if (!isRenderedOverhead && (player.spawnImmunityTimer || 0) > 0) {
+    drawCircle({
+      pos: vec2(0, -34 + runBob),
+      radius: 33,
+      fill: false,
+      outline: {
+        width: 2.5,
+        color: rgb(255, 225, 75),
+        opacity: 0.65 + 0.35 * Math.sin(t * 18),
+      },
     });
   }
 
