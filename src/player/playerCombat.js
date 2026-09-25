@@ -1,12 +1,14 @@
 // ============================================================================
 // src/player/playerCombat.js
 // ============================================================================
-// Implements the Milestone 5 Melee Punch System (Section 7):
-// 1. Triggers punch animation & alternates Left/Right golden boxing gloves.
-// 2. Creates an active 2.5D circular attack hitbox during the hit window.
-// 3. Detects nearby "punchable" objects/dummies/enemies using KAPLAY's `get()`.
-// 4. Applies knockback force (`PUNCH_FORCE`) & hit-stop freeze frames.
-// 5. Spawns punch swipe arcs and starburst impact VFX.
+// Manages Melee Combat (Milestone 5) AND Object Pick-Up / Carry / Drop (Milestone 7):
+// 1. Melee Punch: 1-2 alternating glove combo, active hit window, knockback, & hit-stop.
+// 2. Pick-Up System (`E` key):
+//    - Continuously detects the nearest valid `"pickupable"` object within range.
+//    - Attaches the object overhead to Volt's hands (`player.heldObject`).
+//    - Suspends normal floor physics while carried (`obj.isCarried = true`).
+// 3. Drop System (`Q` key or `E` again):
+//    - Releases the carried object cleanly in front of the player and restores physics.
 // ============================================================================
 
 import {
@@ -16,7 +18,7 @@ import {
 } from "../config/gameConfig.js";
 
 /**
- * Updates the player's melee punch timers, active hitbox detection,
+ * Updates the player's melee punch, object pick-up/carry/drop interactions,
  * and hit-stop state for a single frame.
  *
  * @param {Object} player - The KAPLAY player entity
@@ -24,9 +26,12 @@ import {
  * @param {Object} [camera] - Optional camera controller for impact shake
  */
 export function updatePlayerCombat(player, delta, camera = null) {
-  // 1. Count down cooldown timer between punches
+  // 1. Count down punch cooldown & pickup hoist animation timer
   if (player.punchCooldownTimer > 0) {
     player.punchCooldownTimer = Math.max(0, player.punchCooldownTimer - delta);
+  }
+  if (player.pickupAnimTimer > 0) {
+    player.pickupAnimTimer = Math.max(0, player.pickupAnimTimer - delta);
   }
 
   // 2. Handle brief "hit-stop" micro-freeze when a heavy punch connects
@@ -35,8 +40,48 @@ export function updatePlayerCombat(player, delta, camera = null) {
     return;
   }
 
-  // 3. Trigger a new punch when Left Click or J is pressed (and not on cooldown)
+  // 3. If the player falls off the cliff while carrying an object, drop it!
+  if (player.isFallingInVoid && player.heldObject) {
+    dropHeldObject(player);
+    return;
+  }
+
+  // --------------------------------------------------------------------------
+  // 4. MILESTONE 7: PICK-UP (`E`) & DROP (`Q` / `E`) SYSTEM
+  // --------------------------------------------------------------------------
+  if (player.heldObject) {
+    // Player is currently carrying an object overhead!
+    player.nearestPickupCandidate = null;
+
+    // Keep the carried object's world coordinates synced to the player
+    const obj = player.heldObject;
+    obj.pos.x = player.pos.x;
+    obj.pos.y = player.pos.y;
+    obj.zHeight = player.zHeight + 56;
+    obj.velocity = vec2(0, 0);
+    obj.velZ = 0;
+
+    // Press Q (or press E again) to gently drop the carried object in front of you
+    if (player.input.dropPressed || player.input.pickupPressed) {
+      dropHeldObject(player);
+      return;
+    }
+  } else {
+    // Player is empty-handed: scan for the closest valid "pickupable" object
+    player.nearestPickupCandidate = findNearestPickupCandidate(player);
+
+    // Press E near a valid object to pick it up!
+    if (player.input.pickupPressed && player.nearestPickupCandidate) {
+      pickupObject(player, player.nearestPickupCandidate);
+      return;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 5. MILESTONE 5: MELEE PUNCH TRIGGER (Only when not carrying an object)
+  // --------------------------------------------------------------------------
   if (
+    !player.heldObject &&
     player.input.punchPressed &&
     player.punchCooldownTimer <= 0 &&
     !player.isFallingInVoid
@@ -44,14 +89,11 @@ export function updatePlayerCombat(player, delta, camera = null) {
     startPunch(player);
   }
 
-  // 4. Update active punch animation & hitbox window
+  // 6. Update active punch animation & hitbox window
   if (player.isPunching) {
     player.punchTimer += delta;
-
-    // Override character state to "punch" so the HUD and visuals show it clearly
     player.state = "punch";
 
-    // Is the punch currently inside the active hit window (0.03s .. 0.16s)?
     const inHitWindow =
       player.punchTimer >= COMBAT_CONFIG.HIT_WINDOW_START &&
       player.punchTimer <= COMBAT_CONFIG.HIT_WINDOW_END;
@@ -60,13 +102,108 @@ export function updatePlayerCombat(player, delta, camera = null) {
       checkPunchHitbox(player, camera);
     }
 
-    // Finish punch when duration expires
     if (player.punchTimer >= COMBAT_CONFIG.PUNCH_DURATION) {
       player.isPunching = false;
       player.punchTimer = 0;
       player.hitTargetsThisSwing.clear();
     }
   }
+}
+
+/**
+ * Scans all `"pickupable"` objects in the scene and returns the closest one
+ * within `COMBAT_CONFIG.PICKUP_RANGE` (58 px), or `null` if none is in reach.
+ */
+export function findNearestPickupCandidate(player) {
+  if (player.isFallingInVoid) return null;
+
+  const candidates = get("pickupable");
+  let bestObj = null;
+  let bestDist = COMBAT_CONFIG.PICKUP_RANGE;
+
+  // Bias slightly in front of where the player is facing (+12px)
+  const reachOriginX = player.pos.x + player.facing.x * 12;
+  const reachOriginY =
+    player.pos.y + player.facing.y * 12 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+
+  for (const obj of candidates) {
+    if (obj.isCarried || obj.isFallingInVoid) continue;
+
+    // Must be within reachable vertical height
+    if (Math.abs((obj.zHeight || 0) - player.zHeight) > 48) continue;
+
+    const dx = obj.pos.x - reachOriginX;
+    const dy = (obj.pos.y - reachOriginY) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist <= bestDist) {
+      bestDist = dist;
+      bestObj = obj;
+    }
+  }
+
+  return bestObj;
+}
+
+/**
+ * Picks up the target physics object and attaches it to the player's hands.
+ */
+export function pickupObject(player, obj) {
+  // Cancel any active punch swing
+  player.isPunching = false;
+  player.punchTimer = 0;
+
+  // Attach object to player
+  player.heldObject = obj;
+  player.nearestPickupCandidate = null;
+  player.pickupAnimTimer = COMBAT_CONFIG.PICKUP_ANIM_DURATION;
+  player.landingSquash = 0.45; // Subtle knee bend as Volt hoists the weight!
+
+  // Disable normal ground physics on the object while carried
+  obj.isCarried = true;
+  obj.carrier = player;
+  obj.velocity = vec2(0, 0);
+  obj.velZ = 0;
+  obj.isGrounded = false;
+
+  // Spawn a snappy cyan/gold pickup ring VFX
+  spawnPickupVFX(player.pos.x, player.pos.y, player.zHeight + 24, "GRAB!");
+}
+
+/**
+ * Gently drops the currently carried object in front of the player
+ * and restores its normal 2.5D physics.
+ */
+export function dropHeldObject(player) {
+  const obj = player.heldObject;
+  if (!obj) return;
+
+  // Release references
+  player.heldObject = null;
+  player.pickupAnimTimer = 0;
+  obj.isCarried = false;
+  obj.carrier = null;
+
+  // Place the object ~30px in front of the player's facing direction
+  const dropDist = PLAYER_CONFIG.FOOTPRINT_RADIUS + obj.footprintRadius + 4;
+  obj.pos.x = player.pos.x + player.facing.x * dropDist;
+  obj.pos.y =
+    player.pos.y +
+    player.facing.y * dropDist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+
+  // Start at chest height with a gentle forward & upward hop
+  obj.zHeight = Math.max(10, player.zHeight + 26);
+  obj.velZ = 115;
+  obj.isGrounded = false;
+
+  const forwardSpeed = COMBAT_CONFIG.DROP_FORWARD_SPEED / Math.sqrt(obj.mass);
+  obj.velocity.x =
+    player.velocity.x * 0.4 + player.facing.x * forwardSpeed;
+  obj.velocity.y =
+    player.velocity.y * 0.4 +
+    player.facing.y * forwardSpeed * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+
+  spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "DROP");
 }
 
 /**
@@ -107,19 +244,15 @@ export function getPunchHitboxCenter(player) {
 
 function checkPunchHitbox(player, camera) {
   const hitboxCenter = getPunchHitboxCenter(player);
-
-  // KAPLAY's `get("punchable")` returns an array of every game object in the
-  // current scene that has the `"punchable"` tag!
   const targets = get("punchable");
 
   for (const target of targets) {
-    // Skip if this target was already hit during this single punch swing
+    if (target.isCarried) continue;
     if (player.hitTargetsThisSwing.has(target)) continue;
 
-    // 1. Check vertical (zHeight) overlap so ground punches hit ground objects
     const targetZ = target.zHeight || 0;
     const targetHeight = target.propHeight || 50;
-    const playerPunchZ = player.zHeight + 28; // Fist height (~chest level)
+    const playerPunchZ = player.zHeight + 28;
 
     if (
       playerPunchZ < targetZ - 15 ||
@@ -128,7 +261,6 @@ function checkPunchHitbox(player, camera) {
       continue;
     }
 
-    // 2. Check 2.5D horizontal/depth distance on the arena floor
     const dx = target.pos.x - hitboxCenter.x;
     const dy =
       (target.pos.y - hitboxCenter.y) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
@@ -137,10 +269,8 @@ function checkPunchHitbox(player, camera) {
       COMBAT_CONFIG.PUNCH_RADIUS + (target.footprintRadius || 18);
 
     if (dist <= hitRadius) {
-      // HIT CONNECTED!
       player.hitTargetsThisSwing.add(target);
 
-      // Compute normalized knockback direction from player toward target
       let kbDirX = player.facing.x;
       let kbDirY = player.facing.y;
       const centerDx = target.pos.x - player.pos.x;
@@ -149,7 +279,6 @@ function checkPunchHitbox(player, camera) {
       const centerLen = Math.hypot(centerDx, centerDy);
 
       if (centerLen > 0.001) {
-        // Blend 65% player facing direction + 35% radial center-to-target vector
         kbDirX = player.facing.x * 0.65 + (centerDx / centerLen) * 0.35;
         kbDirY = player.facing.y * 0.65 + (centerDy / centerLen) * 0.35;
         const nLen = Math.hypot(kbDirX, kbDirY);
@@ -157,23 +286,63 @@ function checkPunchHitbox(player, camera) {
         kbDirY /= nLen;
       }
 
-      // Notify the target that it was punched!
       if (typeof target.onPunchHit === "function") {
         target.onPunchHit(vec2(kbDirX, kbDirY), PLAYER_CONFIG.PUNCH_FORCE, player);
       }
 
-      // Apply micro hit-stop freeze & camera shake for punchy impact!
       player.hitStopTimer = COMBAT_CONFIG.HIT_STOP_DURATION;
       if (camera) {
         camera.shake(9.5);
       }
 
-      // Spawn starburst hit flash & comic impact popup at the contact point
       const impactX = (hitboxCenter.x + target.pos.x) * 0.5;
       const impactY = (hitboxCenter.y + target.pos.y) * 0.5;
       spawnHitImpactVFX(impactX, impactY, playerPunchZ);
     }
   }
+}
+
+/**
+ * Spawns a quick cyan/gold sparkle ring when picking up or dropping an object.
+ */
+function spawnPickupVFX(x, y, zHeight, tagText = "GRAB!") {
+  let age = 0;
+  const duration = 0.38;
+
+  add([
+    pos(x, y),
+    z(890),
+    {
+      update() {
+        age += dt();
+        if (age >= duration) destroy(this);
+      },
+      draw() {
+        const progress = age / duration;
+        const alpha = 1 - progress;
+        const drawY = -zHeight;
+
+        drawCircle({
+          pos: vec2(0, drawY),
+          radius: lerp(10, 32, progress),
+          fill: false,
+          outline: {
+            width: 3 * alpha,
+            color: rgb(86, 245, 215),
+            opacity: alpha * 0.85,
+          },
+        });
+
+        drawText({
+          text: tagText,
+          pos: vec2(-18, drawY - 18 - progress * 16),
+          size: 11,
+          color: rgb(120, 255, 225),
+          opacity: alpha,
+        });
+      },
+    },
+  ]);
 }
 
 /**
@@ -206,7 +375,6 @@ function spawnPunchSwipeVFX(player) {
           28 -
           player.zHeight;
 
-        // Outer golden energy arc
         drawCircle({
           pos: vec2(cx, cy),
           radius: lerp(12, 24, progress),
@@ -227,17 +395,16 @@ const COMIC_HIT_WORDS = ["POW!", "BAM!", "WHAM!", "SMASH!"];
 let hitWordIndex = 0;
 
 /**
- * Spawns a bright, high-contrast comic book starburst & "POW!" / "BAM!" badge
- * on foreground layer z(900) so it is always 100% visible against the sandstone arena!
+ * Spawns a compact, high-contrast comic book starburst & "POW!" / "BAM!" badge
+ * on foreground layer z(900) above the hit target.
  */
 function spawnHitImpactVFX(x, y, zHeight) {
   let age = 0;
-  const duration = 0.65; // Long enough to clearly read the comic callout!
+  const duration = 0.65;
   const hitWord = COMIC_HIT_WORDS[hitWordIndex % COMIC_HIT_WORDS.length];
   hitWordIndex += 1;
   const badgeTilt = rand(-10, 10);
 
-  // Create 10 radial spark particles
   const sparks = [];
   for (let i = 0; i < 10; i++) {
     const angle = (i / 10) * Math.PI * 2 + rand(-0.2, 0.2);
@@ -251,7 +418,6 @@ function spawnHitImpactVFX(x, y, zHeight) {
 
   add([
     pos(x, y),
-    // Layer z(900) guarantees the POW! popup is NEVER hidden behind the arena or props!
     z(900),
     {
       update() {
@@ -260,11 +426,9 @@ function spawnHitImpactVFX(x, y, zHeight) {
       },
       draw() {
         const progress = age / duration;
-        // Stay 100% opaque for the first 65% of duration, then fade out smoothly
         const alpha = progress < 0.65 ? 1.0 : 1.0 - (progress - 0.65) / 0.35;
         const drawY = -zHeight;
 
-        // 1. Expanding impact shockwave ring (first 0.25s)
         if (age < 0.25) {
           const ringProg = age / 0.25;
           drawCircle({
@@ -275,7 +439,6 @@ function spawnHitImpactVFX(x, y, zHeight) {
           });
         }
 
-        // 2. Radial flying hit sparks with dark outlines for contrast
         if (age < 0.35) {
           const sparkProg = age / 0.35;
           for (const s of sparks) {
@@ -292,9 +455,6 @@ function spawnHitImpactVFX(x, y, zHeight) {
           }
         }
 
-        // 3. COMPACT HIGH-CONTRAST COMIC "POW!" / "BAM!" BADGE
-        // Positioned high above the target (drawY - 56) and compact (56x20)
-        // so it is crisp and readable without blocking the player character!
         const popScale =
           age < 0.10
             ? lerp(0.5, 1.08, age / 0.10)
@@ -307,7 +467,6 @@ function spawnHitImpactVFX(x, y, zHeight) {
         pushRotate(badgeTilt * 0.6);
         pushScale(popScale, popScale);
 
-        // Dark outer drop-shadow plate
         drawRect({
           pos: vec2(-27, -9),
           width: 56,
@@ -317,7 +476,6 @@ function spawnHitImpactVFX(x, y, zHeight) {
           opacity: alpha * 0.9,
         });
 
-        // Compact crimson comic badge with gold border
         drawRect({
           pos: vec2(-28, -11),
           width: 56,
@@ -331,7 +489,6 @@ function spawnHitImpactVFX(x, y, zHeight) {
           },
         });
 
-        // Crisp 12px comic lettering centered in the compact badge
         drawText({
           text: hitWord,
           pos: vec2(hitWord.length > 4 ? -22 : -18, -6),

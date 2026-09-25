@@ -218,6 +218,20 @@ export const COMBAT_CONFIG = {
 
   // Brief impact freeze-frame ("hit-stop") duration in seconds when a punch lands
   HIT_STOP_DURATION: 0.045,
+
+  // --- Milestone 7: Pick-Up & Carry System Configuration (Section 8) ---
+  // Maximum distance (in 2.5D floor pixels) to detect and grab an object with E
+  PICKUP_RANGE: 58,
+
+  // Duration of the hoist-up animation when picking up an object (in seconds)
+  PICKUP_ANIM_DURATION: 0.20,
+
+  // How much heavier objects slow down the player's running speed while carried
+  // Formula: speedMultiplier = 1 / (1 + object.mass * CARRY_MASS_SLOWDOWN)
+  CARRY_MASS_SLOWDOWN: 0.14,
+
+  // Gentle forward hop velocity when pressing Q to drop a carried object
+  DROP_FORWARD_SPEED: 115,
 };
 
 // ----------------------------------------------------------------------------

@@ -19,6 +19,9 @@ import {
   computeDepthScale,
   drawGroundShadow,
 } from "../systems/depthSort.js";
+import { drawCrateVisuals } from "../objects/crate.js";
+import { drawBallVisuals } from "../objects/ball.js";
+import { drawHeavyBoxVisuals } from "../objects/heavyBox.js";
 
 /**
  * Spawns a Player character at the specified (x, y) arena coordinates.
@@ -50,6 +53,8 @@ export function createPlayer(
       health: 100,
       state: "idle",
       heldObject: null,
+      nearestPickupCandidate: null,
+      pickupAnimTimer: 0,
       animTimer: 0,
       cameraRef: options.camera || null,
 
@@ -195,7 +200,9 @@ function drawSingleLeg(hipPos, footPos, kneeBendX, C) {
  * ground footprint position (0, 0).
  */
 function drawCharacterVisuals(player, C) {
-  const isRunning = player.state === "run";
+  const isCarrying = Boolean(player.heldObject);
+  const isRunning =
+    player.state === "run" || (isCarrying && player.input.isMoving);
   const isJumping = player.state === "jump";
   const isFalling = player.state === "fall";
   const isAirborne = !player.isGrounded;
@@ -256,7 +263,8 @@ function drawCharacterVisuals(player, C) {
   // --------------------------------------------------------------------------
   const tailDirX = -lookX;
   const tailDirY = -lookY * 0.5;
-  const flutter = Math.sin(t * (isPanicFall ? 8.0 : 2.2)) * (isPanicFall ? 11 : 4.5);
+  const flutter =
+    Math.sin(t * (isPanicFall ? 8.0 : 2.2)) * (isPanicFall ? 11 : 4.5);
   const airScarfLift = isPanicFall ? -26 : isFalling ? -10 : isJumping ? 6 : 0;
 
   drawLine({
@@ -331,7 +339,7 @@ function drawCharacterVisuals(player, C) {
   }
 
   // --------------------------------------------------------------------------
-  // E. HANDS / GLOVES (with Dynamic 1-2 Boxing Punch Extension!)
+  // E. HANDS / GLOVES (Overhead Carry, 1-2 Boxing Punch, or Normal Swing)
   // --------------------------------------------------------------------------
   let leftHandPos;
   let rightHandPos;
@@ -346,8 +354,12 @@ function drawCharacterVisuals(player, C) {
     ? Math.sin(punchProgress * Math.PI) * 26
     : 0;
 
+  // Smooth hoist progress (0 -> 1) when picking up an object
+  const hoistProgress = isCarrying
+    ? clamp(1 - player.pickupAnimTimer / COMBAT_CONFIG.PICKUP_ANIM_DURATION, 0, 1)
+    : 0;
+
   if (isPanicFall) {
-    // Frantic windmill flailing above the head!
     const windmillAngle = t * 6.5;
     leftHandPos = vec2(
       -19 + Math.cos(windmillAngle) * 11,
@@ -357,8 +369,15 @@ function drawCharacterVisuals(player, C) {
       19 + Math.cos(windmillAngle + Math.PI) * 11,
       -46 + Math.sin(windmillAngle + Math.PI) * 12
     );
+  } else if (isCarrying) {
+    // Milestone 7: Both Golden Gloves raised overhead to support the carried object!
+    const handY = lerp(-30, -64, hoistProgress) + runBob + squashOffsetY;
+    const gripWidth =
+      player.heldObject.objectType === "heavyBox" ? 19 : 16;
+
+    leftHandPos = vec2(-gripWidth + lookX * 2, handY);
+    rightHandPos = vec2(gripWidth + lookX * 2, handY);
   } else if (player.isPunching) {
-    // Active 1-2 Boxing Punch pose!
     const isLeftPunch = player.punchHand === "left";
     const leftForward = isLeftPunch ? punchExtend : -6;
     const rightForward = !isLeftPunch ? punchExtend : -6;
@@ -372,7 +391,6 @@ function drawCharacterVisuals(player, C) {
       -29 - perpY * 6 + lookY * rightForward * 0.55 + runBob + squashOffsetY
     );
 
-    // Enlarge the active punching glove for visual impact readability!
     if (isLeftPunch) {
       leftRadius = 6.5 + Math.sin(punchProgress * Math.PI) * 4.2;
     } else {
@@ -407,13 +425,16 @@ function drawCharacterVisuals(player, C) {
   });
 
   // --------------------------------------------------------------------------
-  // F. TORSO / TUNIC (leans slightly into the punch!)
+  // F. TORSO / TUNIC
   // --------------------------------------------------------------------------
   const punchLeanX = lookX * punchExtend * 0.16;
   const punchLeanY = lookY * punchExtend * 0.08;
 
   drawRect({
-    pos: vec2(-12 + lookX * 1.5 + punchLeanX, -39 + runBob + squashOffsetY + punchLeanY),
+    pos: vec2(
+      -12 + lookX * 1.5 + punchLeanX,
+      -39 + runBob + squashOffsetY + punchLeanY
+    ),
     width: 24,
     height: 21 - squashOffsetY * 0.4,
     radius: 8,
@@ -422,7 +443,10 @@ function drawCharacterVisuals(player, C) {
   });
 
   drawRect({
-    pos: vec2(-10 + lookX * 2.5 + punchLeanX, -26 + runBob + squashOffsetY * 0.6 + punchLeanY),
+    pos: vec2(
+      -10 + lookX * 2.5 + punchLeanX,
+      -26 + runBob + squashOffsetY * 0.6 + punchLeanY
+    ),
     width: 20,
     height: 4.5,
     radius: 2,
@@ -430,7 +454,10 @@ function drawCharacterVisuals(player, C) {
   });
 
   drawRect({
-    pos: vec2(-11 + lookX * 1.5 + punchLeanX, -41 + runBob + squashOffsetY + punchLeanY),
+    pos: vec2(
+      -11 + lookX * 1.5 + punchLeanX,
+      -41 + runBob + squashOffsetY + punchLeanY
+    ),
     width: 22,
     height: 6,
     radius: 3,
@@ -438,7 +465,7 @@ function drawCharacterVisuals(player, C) {
   });
 
   // --------------------------------------------------------------------------
-  // G. HEAD & VISOR HELMET (with Shocked Googly Eyes & "AAAH!!" when falling!)
+  // G. HEAD & VISOR HELMET
   // --------------------------------------------------------------------------
   const headCenter = vec2(
     lookX * 2.5 + punchLeanX * 1.1,
@@ -468,7 +495,6 @@ function drawCharacterVisuals(player, C) {
     });
 
     if (isPanicFall) {
-      // GIANT SHOCKED CARTOON GOOGLY EYES!
       drawCircle({
         pos: vec2(visorPos.x - 4.2, visorPos.y + 0.5),
         radius: 4.2,
@@ -479,7 +505,6 @@ function drawCharacterVisuals(player, C) {
         radius: 3.4,
         color: rgb(255, 255, 255),
       });
-      // Tiny trembling pupils
       const jitterX = Math.cos(t * 12) * 1.2;
       drawCircle({
         pos: vec2(visorPos.x - 4.2 + jitterX, visorPos.y + 0.5),
@@ -492,7 +517,6 @@ function drawCharacterVisuals(player, C) {
         color: rgb(15, 25, 45),
       });
     } else {
-      // Normal cool glowing cyan visor eyes
       drawCircle({
         pos: vec2(visorPos.x - 4 + lookX * 1.5, visorPos.y),
         radius: 2.3,
@@ -507,7 +531,18 @@ function drawCharacterVisuals(player, C) {
   }
 
   // --------------------------------------------------------------------------
-  // H. FRONT HAND / GLOVE (with bright knuckle highlight when punching!)
+  // H. MILESTONE 7: OVERHEAD CARRIED OBJECT (Held between Volt's raised gloves!)
+  // --------------------------------------------------------------------------
+  if (isCarrying && player.heldObject) {
+    const carriedY = lerp(-26, -63, hoistProgress) + runBob + squashOffsetY;
+    pushTransform();
+    pushTranslate(lookX * 3, carriedY);
+    drawCarriedObjectVisuals(player.heldObject);
+    popTransform();
+  }
+
+  // --------------------------------------------------------------------------
+  // I. FRONT HAND / GLOVE
   // --------------------------------------------------------------------------
   drawCircle({
     pos: frontHandPos,
@@ -560,3 +595,19 @@ function drawCharacterVisuals(player, C) {
 
   popTransform();
 }
+
+/**
+ * Renders the currently carried physics object (Crate, Ball, or Heavy Box)
+ * centered between Volt's raised boxing gloves during a hoist/carry!
+ */
+function drawCarriedObjectVisuals(heldObj) {
+  if (!heldObj) return;
+  if (heldObj.objectType === "crate") {
+    drawCrateVisuals(false);
+  } else if (heldObj.objectType === "ball") {
+    drawBallVisuals(heldObj.rollAngle || 0, false);
+  } else if (heldObj.objectType === "heavyBox") {
+    drawHeavyBoxVisuals(false);
+  }
+}
+

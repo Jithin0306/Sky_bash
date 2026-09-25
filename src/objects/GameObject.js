@@ -89,6 +89,10 @@ export function createPhysicsObject(opts) {
        * Resets the object high in the sky above its original spawn point.
        */
       respawnFromSky() {
+        if (this.carrier && this.carrier.heldObject === this) {
+          this.carrier.heldObject = null;
+        }
+        this.carrier = null;
         this.pos.x = this.homePos.x + rand(-10, 10);
         this.pos.y = this.homePos.y + rand(-10, 10);
         this.velocity = vec2(0, 0);

@@ -13,7 +13,12 @@
 // offset (dy) by 0.64 before measuring the distance from the center!
 // ============================================================================
 
-import { GAME_CONFIG, ARENA_CONFIG, PLAYER_CONFIG } from "../config/gameConfig.js";
+import {
+  GAME_CONFIG,
+  ARENA_CONFIG,
+  PLAYER_CONFIG,
+  COMBAT_CONFIG,
+} from "../config/gameConfig.js";
 import { createArenaCamera } from "../systems/camera.js";
 import { readLocalPlayerInput } from "../systems/input.js";
 import { createPlayer } from "../player/Player.js";
@@ -102,8 +107,9 @@ export function registerArenaScene() {
       }
     });
 
-    // 8. Create the Milestone 6 HUD & camera test keys
-    createMilestone6HUD(player, physicsObjects, camera);
+    // 8. Create the interactive [E] Pick Up target highlight & Milestone 7 HUD
+    createPickupPromptRenderer(player);
+    createMilestone7HUD(player, physicsObjects, camera);
   });
 }
 
@@ -819,9 +825,81 @@ function resolvePropFootprintCollisions(player, props) {
 }
 
 /**
- * Displays the Milestone 6 HUD card with live Physics Objects telemetry.
+ * Renders a pulsing turquoise target ring on the floor and a compact "[E] GRAB"
+ * prompt above the nearest pickupable object whenever Volt's hands are free!
  */
-function createMilestone6HUD(player, physicsObjects, camera) {
+function createPickupPromptRenderer(player) {
+  add([
+    pos(0, 0),
+    z(890), // Above arena objects so the prompt is always crisp and readable
+    {
+      draw() {
+        if (player.heldObject || !player.nearestPickupCandidate) return;
+
+        const target = player.nearestPickupCandidate;
+        if (!target.exists() || target.isCarried || target.isFallingInVoid) return;
+
+        const t = time();
+        const pulse = Math.sin(t * 7) * 2.5;
+        const ringRadius = (target.footprintRadius || 16) + 8 + pulse;
+
+        // 1. Pulsing 2.5D selection ring around the base of the pickupable object
+        pushTransform();
+        pushTranslate(target.pos.x, target.pos.y);
+        pushScale(1, ARENA_CONFIG.PERSPECTIVE_Y_SCALE);
+        drawCircle({
+          pos: vec2(0, 0),
+          radius: ringRadius,
+          fill: false,
+          outline: {
+            width: 2.5,
+            color: rgb(65, 245, 220),
+            opacity: 0.85,
+          },
+        });
+        popTransform();
+
+        // 2. Compact floating "[E] GRAB" pill above the object
+        const badgeY =
+          target.pos.y -
+          (target.zHeight || 0) -
+          (target.propHeight || 30) -
+          20 +
+          Math.sin(t * 6) * 2;
+
+        pushTransform();
+        pushTranslate(target.pos.x, badgeY);
+
+        drawRect({
+          pos: vec2(-27, -10),
+          width: 54,
+          height: 18,
+          radius: 5,
+          color: rgb(14, 22, 38),
+          opacity: 0.92,
+          outline: {
+            width: 1.8,
+            color: rgb(65, 245, 220),
+          },
+        });
+
+        drawText({
+          text: "[E] GRAB",
+          pos: vec2(-21, -5),
+          size: 10,
+          color: rgb(125, 255, 230),
+        });
+
+        popTransform();
+      },
+    },
+  ]);
+}
+
+/**
+ * Displays the Milestone 7 HUD card with live Pick-Up & Carry telemetry.
+ */
+function createMilestone7HUD(player, physicsObjects, camera) {
   let isZoomedIn = false;
 
   onKeyPress("c", () => camera.shake(12));
@@ -835,14 +913,10 @@ function createMilestone6HUD(player, physicsObjects, camera) {
     z(1000),
     {
       draw() {
-        const activeOnArena = physicsObjects.filter(
-          (o) => !o.isFallingInVoid
-        ).length;
-
         // Compact top-left HUD card
         drawRect({
           pos: vec2(14, 14),
-          width: 445,
+          width: 470,
           height: 114,
           radius: 10,
           color: rgb(12, 16, 28),
@@ -854,41 +928,62 @@ function createMilestone6HUD(player, physicsObjects, camera) {
         });
 
         drawText({
-          text: "MILESTONE 6: 2.5D PHYSICS OBJECTS (CRATE, BALL, HEAVY BOX)",
+          text: "MILESTONE 7: PICK-UP & OVERHEAD CARRY SYSTEM",
           pos: vec2(28, 26),
           size: 13,
           color: rgb(86, 220, 255),
         });
 
         drawText({
-          text: "W/A/S/D : Push Objects  |  J / Click : Punch  |  R : Drop Fresh Objects",
+          text: "E : Pick Up / Drop  |  Q : Drop Object  |  J / Click : Punch / Drop",
           pos: vec2(28, 48),
           size: 12,
           color: rgb(210, 222, 245),
         });
 
-        drawText({
-          text: `OBJECTS ON COURT: ${activeOnArena} / ${physicsObjects.length}   |   BALL(0.45kg)  CRATE(1.0kg)  HEAVY(2.6kg)`,
-          pos: vec2(28, 72),
-          size: 11.5,
-          color: rgb(255, 215, 90),
-        });
+        const held = player.heldObject;
+        if (held) {
+          const mass = held.mass || 1.0;
+          const speedPct = Math.round(
+            (1 / (1 + mass * COMBAT_CONFIG.CARRY_MASS_SLOWDOWN)) * 100
+          );
+          const typeLabel = (held.objectType || "OBJECT").toUpperCase();
 
-        let statusText =
-          "TEST: Dribble Balls, slide Crates, & knock objects into each other!";
-        let statusColor = rgb(110, 245, 165);
-        if (activeOnArena < physicsObjects.length) {
-          statusText = "RING OUT! Knocked object off the cliff (auto-respawning)!";
-          statusColor = rgb(255, 225, 85);
+          drawText({
+            text: `CARRYING: ${typeLabel} (${mass}kg)   |   CARRY MOVE SPEED: ${speedPct}%`,
+            pos: vec2(28, 72),
+            size: 11.5,
+            color: rgb(255, 225, 85),
+          });
+
+          drawText({
+            text: "STATUS: Holding overhead! Press [E], [Q], or [J] to Drop it!",
+            pos: vec2(28, 94),
+            size: 12,
+            color: rgb(110, 245, 165),
+          });
+        } else {
+          const candidate = player.nearestPickupCandidate;
+          const candText = candidate
+            ? `IN RANGE: ${(candidate.objectType || "OBJECT").toUpperCase()} (${candidate.mass}kg) -> Press [E] to Hoist!`
+            : "HANDS FREE: Walk near any Crate, Ball, or Heavy Box!";
+
+          drawText({
+            text: candText,
+            pos: vec2(28, 72),
+            size: 11.5,
+            color: candidate ? rgb(115, 255, 210) : rgb(255, 215, 90),
+          });
+
+          drawText({
+            text: "TEST: Pick up light Balls (94% speed) vs Heavy Box (73% speed)!",
+            pos: vec2(28, 94),
+            size: 12,
+            color: rgb(185, 205, 240),
+          });
         }
-
-        drawText({
-          text: statusText,
-          pos: vec2(28, 94),
-          size: 12,
-          color: statusColor,
-        });
       },
     },
   ]);
 }
+

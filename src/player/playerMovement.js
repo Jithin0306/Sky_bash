@@ -9,7 +9,7 @@
 // - Solid under-platform cliff wall collision while falling
 // ============================================================================
 
-import { PLAYER_CONFIG, ARENA_CONFIG } from "../config/gameConfig.js";
+import { PLAYER_CONFIG, ARENA_CONFIG, COMBAT_CONFIG } from "../config/gameConfig.js";
 import { getArenaDistance, isPointOnArena } from "../scenes/arena.js";
 
 /**
@@ -54,12 +54,17 @@ export function updatePlayerMovement(player, delta) {
   player.landImpactSpeed = 0;
 
   // --------------------------------------------------------------------------
-  // 1. HORIZONTAL FLOOR MOVEMENT (X, Y) WITH AIR CONTROL
+  // 1. HORIZONTAL FLOOR MOVEMENT (X, Y) WITH AIR CONTROL & CARRY WEIGHT
   // --------------------------------------------------------------------------
-  const targetVelX = input.moveX * PLAYER_CONFIG.PLAYER_SPEED;
+  // Milestone 7: Heavier carried objects slightly reduce top movement speed!
+  const carryMass = player.heldObject ? player.heldObject.mass : 0;
+  const carrySpeedMult = 1 / (1 + carryMass * COMBAT_CONFIG.CARRY_MASS_SLOWDOWN);
+  const effectiveSpeed = PLAYER_CONFIG.PLAYER_SPEED * carrySpeedMult;
+
+  const targetVelX = input.moveX * effectiveSpeed;
   const targetVelY =
     input.moveY *
-    PLAYER_CONFIG.PLAYER_SPEED *
+    effectiveSpeed *
     ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
   // Base acceleration or deceleration rate
@@ -214,6 +219,16 @@ export function updatePlayerMovement(player, delta) {
       player.state = "fall";
     }
     player.animTimer += delta * 6;
+  } else if (player.pickupAnimTimer > 0) {
+    player.state = "pickup";
+    player.animTimer += delta * 10;
+  } else if (player.heldObject) {
+    player.state = "carry";
+    if (groundSpeed > 15) {
+      player.animTimer += delta * (groundSpeed / PLAYER_CONFIG.PLAYER_SPEED) * 14;
+    } else {
+      player.animTimer += delta * 3.2;
+    }
   } else if (groundSpeed > 15) {
     player.state = "run";
     player.animTimer += delta * (groundSpeed / PLAYER_CONFIG.PLAYER_SPEED) * 14;
