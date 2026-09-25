@@ -271,7 +271,7 @@ export const OBJECTS_CONFIG = {
     label: "Brawler Sphere",
     mass: 0.78,
     friction: 540,
-    bounce: 0.75,
+    bounce: 0.35,
     throwForce: 325,
     damage: 15,
     footprintRadius: 17,

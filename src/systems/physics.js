@@ -121,14 +121,14 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
           camera.shake(6.5);
         }
 
-        // Bounce back into the air if impactSpeed is high enough!
-        if (impactSpeed > 95 && obj.bounce > 0.15) {
+        // Bounce back into the air only once if impactSpeed is high enough!
+        if (impactSpeed > 135 && obj.bounce > 0.18) {
           obj.velZ = impactSpeed * obj.bounce;
-          obj.squashFactor = 0.28;
+          obj.squashFactor = 0.24;
         } else {
           obj.velZ = 0;
           obj.isGrounded = true;
-          obj.squashFactor = 0.2;
+          obj.squashFactor = 0.18;
         }
       } else if (!obj.isFallingInVoid) {
         // Missed the arena surface in mid-air -> plummet into the void!
