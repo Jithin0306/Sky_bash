@@ -1,4 +1,4 @@
-# SkyRing Brawl — KAPLAY 2.5D Circular Arena Prototype
+# Sky_bash — KAPLAY 2.5D Circular Arena Prototype
 
 A modular, learning-first **2.5D multiplayer-style physics & arena fighting game prototype** built with **KAPLAY (JavaScript ES Modules)**.
 
