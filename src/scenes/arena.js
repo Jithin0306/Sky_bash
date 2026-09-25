@@ -18,10 +18,12 @@ import {
   ARENA_CONFIG,
   PLAYER_CONFIG,
   COMBAT_CONFIG,
+  OBJECTS_CONFIG,
 } from "../config/gameConfig.js";
 import { createArenaCamera } from "../systems/camera.js";
 import { readLocalPlayerInput } from "../systems/input.js";
 import { createPlayer } from "../player/Player.js";
+import { computeThrowLaunchState } from "../player/playerCombat.js";
 import {
   updateDepthSort,
   computeDepthScale,
@@ -107,9 +109,10 @@ export function registerArenaScene() {
       }
     });
 
-    // 8. Create the interactive E-Grab target highlight & Phase 7 HUD
+    // 8. Create the interactive E-Grab highlight, Live 2.5D Throw Arc, & Phase 8 HUD
     createPickupPromptRenderer(player);
-    createPhase7HUD(player, physicsObjects, camera);
+    createThrowAimArcRenderer(player);
+    createPhase8HUD(player, physicsObjects, camera);
   });
 }
 
@@ -899,9 +902,102 @@ function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the Phase 7 HUD card with live Pick-Up & Carry telemetry.
+ * Phase 8: Renders a live 2.5D parabolic throw trajectory arc and floor landing
+ * reticle whenever Volt is carrying an object overhead!
  */
-function createPhase7HUD(player, physicsObjects, camera) {
+function createThrowAimArcRenderer(player) {
+  add([
+    pos(0, 0),
+    z(885),
+    {
+      draw() {
+        const held = player.heldObject;
+        if (!held || player.isFallingInVoid) return;
+
+        const launch = computeThrowLaunchState(player, held);
+        const gravity = OBJECTS_CONFIG.GRAVITY;
+        const airDrag = 110;
+
+        // Solve total flight time until zHeight = launch.startZ + velZ*t - 0.5*g*t^2 reaches 0
+        const discriminant =
+          launch.velZ * launch.velZ + 2 * gravity * launch.startZ;
+        const totalFlightTime =
+          (launch.velZ + Math.sqrt(Math.max(0, discriminant))) / gravity;
+
+        const steps = 9;
+        let landX = launch.startX;
+        let landY = launch.startY;
+
+        for (let i = 1; i <= steps; i++) {
+          const frac = i / steps;
+          const tSim = totalFlightTime * frac;
+
+          // Approximate horizontal air drag over tSim
+          const speed0 = Math.hypot(launch.vx, launch.vy);
+          const avgSpeed = Math.max(0, speed0 - 0.5 * airDrag * tSim);
+          const dragRatio = speed0 > 1 ? avgSpeed / speed0 : 1;
+
+          const simX = launch.startX + launch.vx * dragRatio * tSim;
+          const simY = launch.startY + launch.vy * dragRatio * tSim;
+          const simZ = Math.max(
+            0,
+            launch.startZ + launch.velZ * tSim - 0.5 * gravity * tSim * tSim
+          );
+
+          if (i === steps) {
+            landX = simX;
+            landY = simY;
+          }
+
+          // Draw airborne trajectory dot at (simX, simY - simZ)
+          drawCircle({
+            pos: vec2(simX, simY - simZ),
+            radius: lerp(4.5, 2.8, frac),
+            color: rgb(255, 225, 85),
+            opacity: 0.85 * (1 - frac * 0.25),
+            outline: { width: 1.5, color: rgb(35, 24, 15) },
+          });
+        }
+
+        // Draw 2.5D landing target reticle at (landX, landY)
+        const landsOnArena = isPointOnArena(landX, landY);
+        const reticleColor = landsOnArena
+          ? rgb(255, 215, 65)
+          : rgb(255, 78, 68);
+        const pulse = Math.sin(time() * 8) * 3;
+
+        pushTransform();
+        pushTranslate(landX, landY);
+        pushScale(1, ARENA_CONFIG.PERSPECTIVE_Y_SCALE);
+
+        drawCircle({
+          pos: vec2(0, 0),
+          radius: (held.footprintRadius || 18) + 4 + pulse,
+          fill: false,
+          outline: {
+            width: 3,
+            color: reticleColor,
+            opacity: 0.9,
+          },
+        });
+
+        drawCircle({
+          pos: vec2(0, 0),
+          radius: 5,
+          color: reticleColor,
+          opacity: 0.85,
+        });
+
+        popTransform();
+      },
+    },
+  ]);
+}
+
+/**
+ * Displays the Phase 8 HUD card with live Throw System & Projectile telemetry.
+ */
+function createPhase8HUD(player, physicsObjects, camera) {
   let isZoomedIn = false;
 
   onKeyPress("c", () => camera.shake(12));
@@ -918,7 +1014,7 @@ function createPhase7HUD(player, physicsObjects, camera) {
         // Compact top-left HUD card
         drawRect({
           pos: vec2(14, 14),
-          width: 470,
+          width: 492,
           height: 114,
           radius: 10,
           color: rgb(12, 16, 28),
@@ -930,14 +1026,14 @@ function createPhase7HUD(player, physicsObjects, camera) {
         });
 
         drawText({
-          text: "PHASE 7: PICK-UP & OVERHEAD CARRY SYSTEM",
+          text: "PHASE 8: 2.5D THROW SYSTEM & IMPACT PROJECTILES",
           pos: vec2(28, 26),
           size: 13,
           color: rgb(86, 220, 255),
         });
 
         drawText({
-          text: "E : Pick Up / Drop  |  Q : Drop Object  |  J / Click : Punch",
+          text: "E : Pick Up  |  K / J / Click : THROW Object  |  Q : Drop Gently",
           pos: vec2(28, 48),
           size: 12,
           color: rgb(210, 222, 245),
@@ -945,21 +1041,19 @@ function createPhase7HUD(player, physicsObjects, camera) {
 
         const held = player.heldObject;
         if (held) {
-          const mass = held.mass || 1.0;
-          const speedPct = Math.round(
-            (1 / (1 + mass * COMBAT_CONFIG.CARRY_MASS_SLOWDOWN)) * 100
-          );
           const typeLabel = (held.objectType || "OBJECT").toUpperCase();
+          const force = held.throwForce || 520;
+          const dmg = held.damage || 25;
 
           drawText({
-            text: `CARRYING: ${typeLabel} (${mass}kg)   |   CARRY MOVE SPEED: ${speedPct}%`,
+            text: `ARMED: ${typeLabel} (${held.mass}kg)  |  THROW FORCE: ${force}  |  DAMAGE: ${dmg}`,
             pos: vec2(28, 72),
             size: 11.5,
             color: rgb(255, 225, 85),
           });
 
           drawText({
-            text: "STATUS: Holding overhead! Press E or Q to Drop it!",
+            text: "AIMING ARC ACTIVE! Press K, J, or Click to HURL at the Dummy!",
             pos: vec2(28, 94),
             size: 12,
             color: rgb(110, 245, 165),
@@ -967,8 +1061,8 @@ function createPhase7HUD(player, physicsObjects, camera) {
         } else {
           const candidate = player.nearestPickupCandidate;
           const candText = candidate
-            ? `IN RANGE: ${(candidate.objectType || "OBJECT").toUpperCase()} (${candidate.mass}kg) -> Press E to Hoist!`
-            : "HANDS FREE: Walk near any Crate, Ball, or Heavy Box!";
+            ? `IN RANGE: ${(candidate.objectType || "OBJECT").toUpperCase()} (${candidate.mass}kg) -> Press E to Grab & Aim!`
+            : "HANDS FREE: Grab any object with E, aim the gold arc, & THROW!";
 
           drawText({
             text: candText,
@@ -978,7 +1072,7 @@ function createPhase7HUD(player, physicsObjects, camera) {
           });
 
           drawText({
-            text: "TEST: Pick up Balls (90% speed), Crates (88%), or Heavy Box (73%)!",
+            text: "TEST: Throw Heavy Box (CRUSH!) vs Ball (BONK!) into the Dummy!",
             pos: vec2(28, 94),
             size: 12,
             color: rgb(185, 205, 240),
@@ -988,5 +1082,6 @@ function createPhase7HUD(player, physicsObjects, camera) {
     },
   ]);
 }
+
 
 

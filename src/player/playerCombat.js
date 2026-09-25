@@ -26,12 +26,15 @@ import {
  * @param {Object} [camera] - Optional camera controller for impact shake
  */
 export function updatePlayerCombat(player, delta, camera = null) {
-  // 1. Count down punch cooldown & pickup hoist animation timer
+  // 1. Count down punch cooldown, pickup hoist timer, & throw follow-through timer
   if (player.punchCooldownTimer > 0) {
     player.punchCooldownTimer = Math.max(0, player.punchCooldownTimer - delta);
   }
   if (player.pickupAnimTimer > 0) {
     player.pickupAnimTimer = Math.max(0, player.pickupAnimTimer - delta);
+  }
+  if (player.throwAnimTimer > 0) {
+    player.throwAnimTimer = Math.max(0, player.throwAnimTimer - delta);
   }
 
   // 2. Handle brief "hit-stop" micro-freeze when a heavy punch connects
@@ -47,7 +50,7 @@ export function updatePlayerCombat(player, delta, camera = null) {
   }
 
   // --------------------------------------------------------------------------
-  // 4. MILESTONE 7: PICK-UP (`E`) & DROP (`Q` / `E`) SYSTEM
+  // 4. PHASE 7 & 8: PICK-UP (`E`), DROP (`Q` / `E`), & THROW (`K` / `J` / `Click`)
   // --------------------------------------------------------------------------
   if (player.heldObject) {
     // Player is currently carrying an object overhead!
@@ -61,7 +64,13 @@ export function updatePlayerCombat(player, delta, camera = null) {
     obj.velocity = vec2(0, 0);
     obj.velZ = 0;
 
-    // Press Q (or press E again) to gently drop the carried object in front of you
+    // Phase 8: Press K, Right-Click, J, or Left-Click while carrying to THROW!
+    if (player.input.throwPressed || player.input.punchPressed) {
+      throwHeldObject(player, camera);
+      return;
+    }
+
+    // Phase 7: Press Q (or press E again) to gently drop the carried object in front of you
     if (player.input.dropPressed || player.input.pickupPressed) {
       dropHeldObject(player);
       return;
@@ -205,6 +214,75 @@ export function dropHeldObject(player) {
 
   spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "DROP");
 }
+
+/**
+ * Computes the exact 2.5D initial launch position and velocity vector (`vx`, `vy`, `velZ`)
+ * when Volt throws the currently held object. Used both by `throwHeldObject()` and by
+ * the live 2.5D trajectory arc preview in `arena.js`!
+ */
+export function computeThrowLaunchState(player, obj) {
+  const launchDist = PLAYER_CONFIG.FOOTPRINT_RADIUS + (obj.footprintRadius || 18) + 6;
+  const startX = player.pos.x + player.facing.x * launchDist;
+  const startY =
+    player.pos.y +
+    player.facing.y * launchDist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+  const startZ = Math.max(24, player.zHeight + 48);
+
+  const throwForce = obj.throwForce || 520;
+  const momentumMult = COMBAT_CONFIG.THROW_PLAYER_MOMENTUM_FACTOR;
+
+  const vx =
+    player.facing.x * throwForce + player.velocity.x * momentumMult;
+  const vy =
+    player.facing.y * throwForce * ARENA_CONFIG.PERSPECTIVE_Y_SCALE +
+    player.velocity.y * momentumMult;
+
+  const velZ =
+    COMBAT_CONFIG.THROW_ARC_VEL_Z / Math.sqrt(Math.max(0.4, obj.mass || 1.0));
+
+  return { startX, startY, startZ, vx, vy, velZ };
+}
+
+/**
+ * Phase 8: Hurls the currently carried object along a high-speed 2.5D arc in the
+ * direction Volt is facing!
+ */
+export function throwHeldObject(player, camera = null) {
+  const obj = player.heldObject;
+  if (!obj) return;
+
+  const launch = computeThrowLaunchState(player, obj);
+
+  // Release object from Volt's hands
+  player.heldObject = null;
+  player.pickupAnimTimer = 0;
+  player.throwAnimTimer = COMBAT_CONFIG.THROW_ANIM_DURATION;
+  player.punchCooldownTimer = 0.24; // Prevent accidental immediate punch on same click
+  player.landingSquash = 0.35;
+  player.state = "throw";
+
+  // Configure thrown projectile physics state
+  obj.isCarried = false;
+  obj.carrier = null;
+  obj.isThrownProjectile = true;
+  obj.thrower = player;
+  obj.throwHitSet.clear();
+
+  obj.pos.x = launch.startX;
+  obj.pos.y = launch.startY;
+  obj.zHeight = launch.startZ;
+  obj.velocity = vec2(launch.vx, launch.vy);
+  obj.velZ = launch.velZ;
+  obj.isGrounded = false;
+  obj.squashFactor = -0.25; // Slight forward stretch as it launches!
+
+  if (camera) {
+    camera.shake(5.0);
+  }
+
+  spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "YEET!");
+}
+
 
 /**
  * Starts a melee punch swing, alternates hands, applies a forward lunge,
@@ -398,11 +476,14 @@ let hitWordIndex = 0;
  * Spawns a compact, high-contrast comic book starburst & "POW!" / "BAM!" badge
  * on foreground layer z(900) above the hit target.
  */
-function spawnHitImpactVFX(x, y, zHeight) {
+export function spawnHitImpactVFX(x, y, zHeight, customWord = null) {
   let age = 0;
   const duration = 0.65;
-  const hitWord = COMIC_HIT_WORDS[hitWordIndex % COMIC_HIT_WORDS.length];
-  hitWordIndex += 1;
+  const hitWord =
+    customWord || COMIC_HIT_WORDS[hitWordIndex % COMIC_HIT_WORDS.length];
+  if (!customWord) {
+    hitWordIndex += 1;
+  }
   const badgeTilt = rand(-10, 10);
 
   const sparks = [];

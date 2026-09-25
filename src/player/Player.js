@@ -55,6 +55,7 @@ export function createPlayer(
       heldObject: null,
       nearestPickupCandidate: null,
       pickupAnimTimer: 0,
+      throwAnimTimer: 0,
       animTimer: 0,
       cameraRef: options.camera || null,
 
@@ -370,13 +371,30 @@ function drawCharacterVisuals(player, C) {
       -46 + Math.sin(windmillAngle + Math.PI) * 12
     );
   } else if (isCarrying) {
-    // Milestone 7: Both Golden Gloves raised overhead to support the carried object!
+    // Phase 7: Both Golden Gloves raised overhead to support the carried object!
     const handY = lerp(-30, -64, hoistProgress) + runBob + squashOffsetY;
     const gripWidth =
       player.heldObject.objectType === "heavyBox" ? 19 : 16;
 
     leftHandPos = vec2(-gripWidth + lookX * 2, handY);
     rightHandPos = vec2(gripWidth + lookX * 2, handY);
+  } else if (player.throwAnimTimer > 0) {
+    // Phase 8: Snappy two-handed forward pitch follow-through after hurling an object!
+    const throwProg =
+      1 - player.throwAnimTimer / COMBAT_CONFIG.THROW_ANIM_DURATION;
+    const reach = Math.sin(throwProg * Math.PI) * 22;
+    const pitchY = lerp(-56, -28, throwProg) + runBob + squashOffsetY;
+
+    leftHandPos = vec2(
+      perpX * 11 + lookX * (10 + reach),
+      pitchY + lookY * reach * 0.45
+    );
+    rightHandPos = vec2(
+      -perpX * 11 + lookX * (10 + reach),
+      pitchY + lookY * reach * 0.45
+    );
+    leftRadius = 7.8;
+    rightRadius = 7.8;
   } else if (player.isPunching) {
     const isLeftPunch = player.punchHand === "left";
     const leftForward = isLeftPunch ? punchExtend : -6;

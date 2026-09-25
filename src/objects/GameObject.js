@@ -58,6 +58,9 @@ export function createPhysicsObject(opts) {
       isFallingInVoid: false,
       isCarried: false,
       carrier: null,
+      isThrownProjectile: false,
+      thrower: null,
+      throwHitSet: new Set(),
 
       // --- Visual Feedback State ---
       rollAngle: 0,
@@ -67,7 +70,7 @@ export function createPhysicsObject(opts) {
       /**
        * Called automatically by `playerCombat.js` when a player's punch hits this object!
        * Notice how knockback velocity is divided by `this.mass`:
-       * - Light objects (Ball, mass 0.45) launch fast and bounce!
+       * - Light objects (Ball, mass 0.78) launch fast and bounce!
        * - Medium objects (Crate, mass 1.0) slide a solid distance!
        * - Heavy objects (Heavy Box, mass 2.6) budge a short, heavy distance!
        */
@@ -93,6 +96,9 @@ export function createPhysicsObject(opts) {
           this.carrier.heldObject = null;
         }
         this.carrier = null;
+        this.isThrownProjectile = false;
+        this.thrower = null;
+        this.throwHitSet.clear();
         this.pos.x = this.homePos.x + rand(-10, 10);
         this.pos.y = this.homePos.y + rand(-10, 10);
         this.velocity = vec2(0, 0);
@@ -106,10 +112,10 @@ export function createPhysicsObject(opts) {
 
       /**
        * Renders the object's 2.5D ground shadow, perspective scale, squash/stretch,
-       * and custom visual design.
+       * thrown projectile wind streaks, and custom visual design.
        */
       draw() {
-        // When carried by the player (Milestone 7), the player draws the held object
+        // When carried by the player (Phase 7), the player draws the held object
         if (this.isCarried) return;
 
         const overArena = isPointOnArena(this.pos.x, this.pos.y);
@@ -122,7 +128,33 @@ export function createPhysicsObject(opts) {
           isFallingInVoid: this.isFallingInVoid,
         });
 
-        // 2. Compute 2.5D depth scale + abyss shrink scale + impact squash/stretch
+        // 2. Phase 8: High-speed motion wind streaks when flying as a thrown projectile!
+        if (this.isThrownProjectile) {
+          const speed = Math.hypot(this.velocity.x, this.velocity.y);
+          if (speed > 90) {
+            const dirX = -this.velocity.x / speed;
+            const dirY = -this.velocity.y / speed;
+            const streakLen = clamp(speed * 0.08, 18, 46);
+            const centerDrawY = -this.zHeight - this.propHeight * 0.5;
+
+            drawLine({
+              p1: vec2(dirX * 10, centerDrawY - 8 + dirY * 6),
+              p2: vec2(dirX * (10 + streakLen), centerDrawY - 8 + dirY * streakLen),
+              width: 3,
+              color: rgb(255, 235, 130),
+              opacity: 0.75,
+            });
+            drawLine({
+              p1: vec2(dirX * 14, centerDrawY + 6 + dirY * 6),
+              p2: vec2(dirX * (14 + streakLen * 0.8), centerDrawY + 6 + dirY * streakLen * 0.8),
+              width: 2.5,
+              color: rgb(120, 240, 255),
+              opacity: 0.7,
+            });
+          }
+        }
+
+        // 3. Compute 2.5D depth scale + abyss shrink scale + impact squash/stretch
         const dScale = computeDepthScale(this.pos.y);
         const abyssScale = this.isFallingInVoid
           ? clamp(1 + this.zHeight / 640, 0.35, 1.0)

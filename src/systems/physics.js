@@ -17,14 +17,15 @@ import {
 } from "../config/gameConfig.js";
 import { getArenaDistance, isPointOnArena } from "../scenes/arena.js";
 import { updateDepthSort } from "./depthSort.js";
+import { spawnHitImpactVFX } from "../player/playerCombat.js";
 
 /**
  * Steps the entire 2.5D object physics simulation for the current frame.
  *
  * @param {Object} player - The playable character
  * @param {Array<Object>} objects - Array of active physics objects in the arena
- * @param {Object} camera - Arena camera controller (for heavy landing shakes)
- * @param {Function} [onRingOut] - Optional callback when an object falls off the cliff
+ * @param {Array<Object>} props - Arena props (Crystal Orb Stands & Sparring Dummy)
+ * @param {Object} camera - Arena camera controller (for heavy landing & throw impact shakes)
  */
 export function updatePhysicsSystem(
   player,
@@ -39,19 +40,19 @@ export function updatePhysicsSystem(
     updateSingleObjectPhysics(obj, delta, camera);
   }
 
-  // 2. Resolve Object-vs-Object 2.5D elastic collisions (mass-weighted!)
-  resolveObjectToObjectCollisions(objects);
+  // 2. Resolve Object-vs-Object 2.5D elastic collisions (mass-weighted + thrown impact VFX!)
+  resolveObjectToObjectCollisions(objects, camera);
 
   // 3. Resolve Object-vs-ArenaProp collisions (so Heavy Boxes, Crates, & Balls
   //    bounce/slide solidly around the Crystal Orb Stands & Sparring Dummy!)
-  resolveObjectToPropCollisions(objects, props);
+  resolveObjectToPropCollisions(objects, props, camera);
 
   // 4. Resolve Player-vs-Object pushing & footprint collisions
   if (player && !player.isFallingInVoid) {
     resolvePlayerToObjectInteractions(player, objects);
     // Re-check Object-vs-Prop after player pushing so the player can NEVER
     // wedge or shove a Heavy Box inside a Crystal Orb Stand!
-    resolveObjectToPropCollisions(objects, props);
+    resolveObjectToPropCollisions(objects, props, camera);
   }
 }
 
@@ -155,7 +156,14 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
     obj.respawnFromSky();
   }
 
-  // 8. Decay visual squash & hit flash, and update 2.5D depth layer (`z = y`)
+  // 8. Phase 8: Clear `isThrownProjectile` once the object settles on the floor
+  if (obj.isThrownProjectile && obj.isGrounded && speed < 115) {
+    obj.isThrownProjectile = false;
+    obj.thrower = null;
+    obj.throwHitSet.clear();
+  }
+
+  // 9. Decay visual squash & hit flash, and update 2.5D depth layer (`z = y`)
   obj.squashFactor = lerp(obj.squashFactor, 0, Math.min(1, 10 * delta));
   obj.hitFlashTimer = Math.max(0, obj.hitFlashTimer - delta);
   updateDepthSort(obj);
@@ -165,7 +173,7 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
  * Resolves 2.5D elastic collisions between all pairs of physics objects,
  * transferring momentum accurately based on each object's `mass` and `bounce`!
  */
-function resolveObjectToObjectCollisions(objects) {
+function resolveObjectToObjectCollisions(objects, camera = null) {
   for (let i = 0; i < objects.length; i++) {
     const a = objects[i];
     if (a.isCarried || a.isFallingInVoid) continue;
@@ -221,7 +229,7 @@ function resolveObjectToObjectCollisions(objects) {
 
         // Only bounce if moving toward each other
         if (velAlongNormal < 0) {
-          const restitution = Math.max(a.bounce, b.bounce, 0.35);
+          const restitution = Math.max(a.bounce, b.bounce, 0.42);
           const impulse =
             (-(1 + restitution) * velAlongNormal) / totalInvMass;
 
@@ -233,8 +241,35 @@ function resolveObjectToObjectCollisions(objects) {
           b.velocity.y +=
             impulse * invMassB * ny * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
-          a.squashFactor = 0.18;
-          b.squashFactor = 0.18;
+          a.squashFactor = 0.22;
+          b.squashFactor = 0.22;
+
+          // Phase 8: High-impact thrown projectile chain-reaction crash VFX!
+          const thrownObj = a.isThrownProjectile
+            ? a
+            : b.isThrownProjectile
+            ? b
+            : null;
+          const otherObj = thrownObj === a ? b : a;
+
+          if (
+            thrownObj &&
+            otherObj &&
+            !thrownObj.throwHitSet.has(otherObj) &&
+            Math.abs(velAlongNormal) > 150
+          ) {
+            thrownObj.throwHitSet.add(otherObj);
+            otherObj.velZ = Math.max(otherObj.velZ, 165 / Math.sqrt(otherObj.mass));
+            otherObj.isGrounded = false;
+            otherObj.hitFlashTimer = 0.14;
+            if (camera) camera.shake(6.5);
+            spawnHitImpactVFX(
+              (a.pos.x + b.pos.x) * 0.5,
+              (a.pos.y + b.pos.y) * 0.5,
+              Math.max(a.zHeight, b.zHeight) + 20,
+              "CRASH!"
+            );
+          }
         }
       }
     }
@@ -246,7 +281,7 @@ function resolveObjectToObjectCollisions(objects) {
  * Balls, Heavy Boxes) and Arena Props (Crystal Orb Stands & Sparring Dummy).
  * Guarantees that Heavy Boxes and Crates can NEVER merge into the Orb Stands!
  */
-function resolveObjectToPropCollisions(objects, props) {
+function resolveObjectToPropCollisions(objects, props, camera = null) {
   if (!props || props.length === 0) return;
 
   for (const obj of objects) {
@@ -260,8 +295,8 @@ function resolveObjectToPropCollisions(objects, props) {
 
       // Check vertical 3D overlap
       if (
-        obj.zHeight > propZ + propH - 6 ||
-        propZ > obj.zHeight + obj.propHeight - 6
+        obj.zHeight > propZ + propH - 4 ||
+        propZ > obj.zHeight + obj.propHeight - 4
       ) {
         continue;
       }
@@ -278,6 +313,10 @@ function resolveObjectToPropCollisions(objects, props) {
         const overlap = minDist - dist;
 
         const isMovableDummy = Boolean(prop.velocity);
+        const objSpeed = Math.hypot(
+          obj.velocity.x,
+          obj.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+        );
 
         if (isMovableDummy) {
           // Split separation between the physics object and the movable Sparring Dummy
@@ -289,12 +328,56 @@ function resolveObjectToPropCollisions(objects, props) {
           prop.pos.y -=
             ny * overlap * 0.5 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
-          // Transfer momentum if a fast object slams into the Sparring Dummy!
-          const objSpeed = Math.hypot(
-            obj.velocity.x,
-            obj.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE
-          );
-          if (objSpeed > 80) {
+          // Phase 8: High-impact thrown projectile hit on the Sparring Dummy!
+          if (
+            obj.isThrownProjectile &&
+            !obj.throwHitSet.has(prop) &&
+            objSpeed > 110
+          ) {
+            obj.throwHitSet.add(prop);
+
+            // Launch dummy in the direction the thrown object was travelling!
+            const hitDirX = -nx;
+            const hitDirY = -ny;
+            const knockbackSpeed =
+              (280 + objSpeed * 0.55) * Math.sqrt(obj.mass);
+
+            prop.velocity.x = hitDirX * knockbackSpeed;
+            prop.velocity.y =
+              hitDirY * knockbackSpeed * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+            prop.velZ = 235 * Math.sqrt(obj.mass * 0.75);
+            prop.isGrounded = false;
+            prop.hitFlashTimer = 0.20;
+            prop.wobbleAngle = (hitDirX >= 0 ? 1 : -1) * 38;
+            prop.totalHitsTaken = (prop.totalHitsTaken || 0) + 1;
+
+            // Ricochet the thrown object upward slightly on impact
+            obj.velocity.x *= -0.35;
+            obj.velocity.y *= -0.35;
+            obj.velZ = 165;
+            obj.isGrounded = false;
+            obj.squashFactor = 0.30;
+            obj.hitFlashTimer = 0.14;
+
+            if (camera) {
+              camera.shake(obj.mass >= 2.0 ? 12.0 : 8.5);
+            }
+
+            const impactWord =
+              obj.objectType === "heavyBox"
+                ? "CRUSH!"
+                : obj.objectType === "ball"
+                ? "BONK!"
+                : "SMASH!";
+
+            spawnHitImpactVFX(
+              prop.pos.x,
+              prop.pos.y,
+              (prop.zHeight || 0) + 28,
+              impactWord
+            );
+          } else if (objSpeed > 80) {
+            // Normal sliding/bumping momentum transfer
             prop.velocity.x -= nx * objSpeed * 0.55 * obj.mass;
             prop.velocity.y -=
               ny *
@@ -309,6 +392,25 @@ function resolveObjectToPropCollisions(objects, props) {
           obj.pos.x += nx * overlap;
           obj.pos.y += ny * overlap * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
+          // If a thrown projectile slams into the Crystal Orb Stand, ring the orb!
+          if (
+            obj.isThrownProjectile &&
+            !obj.throwHitSet.has(prop) &&
+            objSpeed > 130
+          ) {
+            obj.throwHitSet.add(prop);
+            if (typeof prop.onPunchHit === "function") {
+              prop.onPunchHit(vec2(-nx, -ny), objSpeed);
+            }
+            if (camera) camera.shake(6.0);
+            spawnHitImpactVFX(
+              prop.pos.x,
+              prop.pos.y,
+              32,
+              "CLANG!"
+            );
+          }
+
           // Bounce/deflect the object's velocity off the solid stone pedestal
           const velX = obj.velocity.x;
           const velY = obj.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
@@ -317,7 +419,7 @@ function resolveObjectToPropCollisions(objects, props) {
           if (velAlongNormal < 0) {
             const restitution = Math.max(0.35, obj.bounce);
             obj.velocity.x =
-              (velX - (1 + restitution) * velAlongNormal * nx);
+              velX - (1 + restitution) * velAlongNormal * nx;
             obj.velocity.y =
               (velY - (1 + restitution) * velAlongNormal * ny) *
               ARENA_CONFIG.PERSPECTIVE_Y_SCALE;

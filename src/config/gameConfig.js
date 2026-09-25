@@ -232,6 +232,16 @@ export const COMBAT_CONFIG = {
 
   // Gentle forward hop velocity when pressing Q to drop a carried object
   DROP_FORWARD_SPEED: 115,
+
+  // --- Phase 8: 2.5D Throw System Configuration (Section 9) ---
+  // Upward vertical arc velocity (velZ) when hurling an object (scaled by 1/sqrt(mass))
+  THROW_ARC_VEL_Z: 235,
+
+  // Fraction of the player's running velocity added to the thrown projectile
+  THROW_PLAYER_MOMENTUM_FACTOR: 0.38,
+
+  // Duration of Volt's two-handed overhead throw follow-through animation (in seconds)
+  THROW_ANIM_DURATION: 0.22,
 };
 
 // ----------------------------------------------------------------------------
