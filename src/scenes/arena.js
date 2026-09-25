@@ -66,7 +66,9 @@ export function isPointOnArena(x, y, margin = 0) {
 }
 
 /**
- * Registers the "arena" scene with KAPLAY.
+ * Registers the "arena" scene with KAPLAY (NORMAL GAME — Player vs AI Match Mode).
+ * Developer test props (Sparring Dummy) and debug hotkeys (T/B/R/1-6) are strictly
+ * separated into the Developer-Only "devTest" scene!
  */
 export function registerArenaScene() {
   scene("arena", () => {
@@ -79,9 +81,9 @@ export function registerArenaScene() {
     // 3. Create the 2.5D Floating Circular Arena
     createFloatingArena();
 
-    // 4. Spawn playable character ("VOLT") & Phase 10 AI Rival ("PYRO")!
+    // 4. Spawn playable character ("VOLT") & AI Rival ("PYRO")!
     const player = createPlayer(
-      ARENA_CONFIG.CENTER_X - 135,
+      ARENA_CONFIG.CENTER_X - 155,
       ARENA_CONFIG.CENTER_Y + 65,
       {
         playerId: 1,
@@ -92,13 +94,13 @@ export function registerArenaScene() {
     );
 
     const enemyBot = createPlayer(
-      ARENA_CONFIG.CENTER_X + 135,
+      ARENA_CONFIG.CENTER_X + 155,
       ARENA_CONFIG.CENTER_Y - 35,
       {
         playerId: 2,
         displayName: "PYRO",
         isAI: true,
-        speedMultiplier: 0.62, // 62% movement speed so Pyro paces naturally instead of hunting Volt down!
+        speedMultiplier: 0.62,
         colors: PYRO_BOT_PALETTE,
         ringColor: [245, 78, 65],
         camera,
@@ -106,47 +108,22 @@ export function registerArenaScene() {
     );
     enemyBot.facing = vec2(-1, 0.3);
 
-    // 5. Spawn 2.5D Depth-Sorted & Punchable Arena Totems + Sparring Dummy
-    const props = createDepthTestProps();
+    // 5. Spawn decorative 2.5D Crystal Totems ONLY (no Developer Sparring Dummy in Normal Game!)
+    const props = createDepthTestProps(false);
 
-    // 6. Phase 6 & 9: Spawn 2.5D Physics Objects (Crates, Balls, Heavy Box, & Fuse Bombs!)
+    // 6. Spawn 2.5D Arena Physics Objects & Explosives with natural staggered sky-drop timers
     const physicsObjects = spawnArenaPhysicsObjects();
 
-    // 7. Phase 10: Initialize Autonomous AI Controller for Pyro
+    // 7. Initialize Autonomous AI Controller for Pyro
     const aiController = createEnemyAIController(
       enemyBot,
       player,
       physicsObjects
     );
 
-    // Press T anytime to pause/resume Pyro's AI brain!
-    onKeyPress("t", () => {
-      aiController.enabled = !aiController.enabled;
-    });
-
-    // Press R anytime to drop all physics objects fresh from the sky!
-    onKeyPress("r", () => {
-      for (const obj of physicsObjects) {
-        obj.respawnFromSky();
-      }
-    });
-
-    // Phase 9 & 10: Press B anytime to ignite/trigger all Bombs, Sticky Bombs, & Landmines!
-    onKeyPress("b", () => {
-      for (const obj of physicsObjects) {
-        if (
-          obj.objectType === "bomb" ||
-          obj.objectType === "stickyBomb" ||
-          obj.objectType === "mine"
-        ) {
-          if (obj.isExplodedCooldown || obj.isWaitingToDrop) {
-            obj.respawnFromSky();
-          }
-          if (typeof obj.ignite === "function") {
-            obj.ignite();
-          }
-        }
-      }
+    // Press ESC anytime to return to the Main Menu
+    onKeyPress("escape", () => {
+      go("menu");
     });
 
     const fighters = [player, enemyBot];
@@ -186,9 +163,9 @@ export function registerArenaScene() {
       camera.setTarget(player.pos);
     });
 
-    // 9. Create the interactive E-Grab highlight & Phase 10 HUD
+    // 9. Create the interactive E-Grab highlight & clean Normal Match Scoreboard HUD
     createPickupPromptRenderer(player);
-    createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera);
+    createNormalGameHUD(player, enemyBot);
   });
 }
 
@@ -198,7 +175,7 @@ export function registerArenaScene() {
  * - 1 Slime Sticky Bomb & 1 Proximity Landmine right at match start (0s delay)
  * - Followed by Supply Crate, Sky Fuse Bomb, Brawler Sphere, Heavy Box, & extra Sticky/Mine!
  */
-function spawnArenaPhysicsObjects() {
+export function spawnArenaPhysicsObjects() {
   const cx = ARENA_CONFIG.CENTER_X;
   const cy = ARENA_CONFIG.CENTER_Y;
 
@@ -217,7 +194,7 @@ function spawnArenaPhysicsObjects() {
 /**
  * Spawns a brief expanding 2.5D dust/impact ring on the floor when landing.
  */
-function spawnLandingRing(x, y) {
+export function spawnLandingRing(x, y) {
   let age = 0;
   const duration = 0.28;
 
@@ -257,7 +234,7 @@ function spawnLandingRing(x, y) {
  * Spawns a giant, high-contrast "KO!! RING OUT!" comic banner on foreground
  * layer z(950) at the cliff edge whenever a target is knocked off the arena!
  */
-function spawnRingOutBanner(x, y) {
+export function spawnRingOutBanner(x, y) {
   let age = 0;
   const duration = 1.05;
 
@@ -344,7 +321,7 @@ function spawnRingOutBanner(x, y) {
 /**
  * Spawns soft, drifting background particles in the sky void behind the arena.
  */
-function createAmbientBackground() {
+export function createAmbientBackground() {
   const moteCount = 32;
   const motes = [];
 
@@ -398,7 +375,7 @@ function createAmbientBackground() {
  * We use KAPLAY's `scale(1, PERSPECTIVE_Y_SCALE)` component so every circle
  * drawn inside this object is automatically rendered as a 2.5D perspective ellipse.
  */
-function createFloatingArena() {
+export function createFloatingArena() {
   const C = ARENA_CONFIG.COLORS;
   const R = ARENA_CONFIG.RADIUS;
   const depth = ARENA_CONFIG.PLATFORM_DEPTH;
@@ -588,11 +565,10 @@ function createFloatingArena() {
 }
 
 /**
- * Spawns 3 depth-sorted 2.5D arena objects (two Crystal Braziers + one Center Sparring Dummy)
- * so you can walk North (behind) and South (in front) of them to see `depth = y` sorting
- * and 2.5D ground shadows in action!
+ * Spawns depth-sorted 2.5D arena objects (two Crystal Braziers + optional Center Sparring Dummy).
+ * When `includeTestDummy === false` (in Normal Game mode), only the Crystal Braziers are spawned!
  */
-function createDepthTestProps() {
+export function createDepthTestProps(includeTestDummy = true) {
   const props = [];
 
   // 1. Left & Right Crystal Energy Totems (Ring/flash when punched!)
@@ -680,7 +656,12 @@ function createDepthTestProps() {
     props.push(totem);
   }
 
-  // 2. Center-North Sparring Target Dummy (Can be punched across the court & off the cliff!)
+  // Only spawn the Sparring Target Dummy inside the Developer Test Area!
+  if (!includeTestDummy) {
+    return props;
+  }
+
+  // 2. Center-North Sparring Target Dummy (Developer Test Sandbox only!)
   const dummySpawn = vec2(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y - 95);
   const dummy = add([
     pos(dummySpawn.x, dummySpawn.y),
@@ -882,7 +863,7 @@ function createDepthTestProps() {
  * Resolves 2.5D circular footprint collisions between the player and arena props
  * when the player is lower than the top of the prop (zHeight < prop.propHeight).
  */
-function resolvePropFootprintCollisions(player, props) {
+export function resolvePropFootprintCollisions(player, props) {
   if (player.isFallingInVoid) return;
 
   for (const prop of props) {
@@ -912,7 +893,7 @@ function resolvePropFootprintCollisions(player, props) {
  * (Note: Never use square brackets like [E] inside KAPLAY drawText, because KAPLAY
  * parses square brackets as rich-text style tags!)
  */
-function createPickupPromptRenderer(player) {
+export function createPickupPromptRenderer(player) {
   add([
     pos(0, 0),
     z(890), // Above arena objects so the prompt is always crisp and readable
@@ -954,7 +935,7 @@ function createPickupPromptRenderer(player) {
         });
         popTransform();
 
-        // 2. Compact floating "E : GRAB" or "E : GRAB PYRO" pill above the target (no square brackets!)
+        // 2. Compact floating "E : GRAB" or "E : GRAB FOE" pill above the target (no square brackets!)
         const badgeY =
           target.pos.y -
           (target.zHeight || 0) -
@@ -995,66 +976,141 @@ function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the Phase 10 HUD card with live VOLT vs PYRO AI Brawler telemetry,
- * Shift-Sprint Stamina readout, and Fighter Carry / Escape instructions.
+ * Displays the clean, player-facing Normal Game Arcade Match Scoreboard HUD
+ * (VOLT vs PYRO, HP & Stamina bars, KO Score, and controls banner).
  */
-function createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera) {
-  let isZoomedIn = false;
-
-  onKeyPress("c", () => camera.shake(12));
-  onKeyPress("z", () => {
-    isZoomedIn = !isZoomedIn;
-    camera.setZoom(isZoomedIn ? 1.0 : CAMERA_CONFIG.DEFAULT_ZOOM);
-  });
-
+function createNormalGameHUD(player, enemyBot) {
   add([
     fixed(),
     z(1000),
     {
       draw() {
-        // Compact top-left HUD card
+        const cx = GAME_CONFIG.WIDTH * 0.5;
+
+        // 1. Top-Center VS Match Scoreboard Banner
         drawRect({
-          pos: vec2(14, 14),
-          width: 555,
-          height: 118,
+          pos: vec2(cx - 250, 12),
+          width: 500,
+          height: 62,
           radius: 10,
           color: rgb(12, 16, 28),
-          opacity: 0.84,
-          outline: {
-            width: 2,
-            color: rgb(68, 88, 132),
-          },
+          opacity: 0.88,
+          outline: { width: 2, color: rgb(64, 92, 142) },
+        });
+
+        // Left Fighter: VOLT (Player 1)
+        const p1Hp = clamp((player.health || 0) / 100, 0, 1);
+        const p1Stam = clamp((player.stamina ?? 100) / 100, 0, 1);
+
+        drawText({
+          text: `VOLT  (KOs: ${player.ringOutCount})`,
+          pos: vec2(cx - 234, 20),
+          size: 13,
+          color: rgb(95, 235, 255),
+        });
+
+        // Volt HP Bar
+        drawRect({
+          pos: vec2(cx - 234, 38),
+          width: 170,
+          height: 10,
+          radius: 4,
+          color: rgb(24, 30, 48),
+        });
+        if (p1Hp > 0) {
+          drawRect({
+            pos: vec2(cx - 234, 38),
+            width: Math.max(4, 170 * p1Hp),
+            height: 10,
+            radius: 4,
+            color: rgb(45, 225, 210),
+          });
+        }
+
+        // Volt Stamina Bar
+        drawRect({
+          pos: vec2(cx - 234, 52),
+          width: 170,
+          height: 6,
+          radius: 3,
+          color: rgb(20, 26, 42),
+        });
+        if (p1Stam > 0) {
+          drawRect({
+            pos: vec2(cx - 234, 52),
+            width: Math.max(3, 170 * p1Stam),
+            height: 6,
+            radius: 3,
+            color: player.isStaminaExhausted
+              ? rgb(255, 95, 55)
+              : rgb(165, 255, 85),
+          });
+        }
+
+        // Center "VS" Badge
+        drawCircle({
+          pos: vec2(cx, 43),
+          radius: 20,
+          color: rgb(28, 38, 66),
+          outline: { width: 2, color: rgb(255, 215, 75) },
+        });
+        drawText({
+          text: "VS",
+          pos: vec2(cx - 10, 37),
+          size: 13,
+          color: rgb(255, 225, 85),
+        });
+
+        // Right Fighter: PYRO (AI Rival)
+        const p2Hp = clamp((enemyBot.health || 0) / 100, 0, 1);
+
+        drawText({
+          text: `PYRO  (KOs: ${enemyBot.ringOutCount})`,
+          pos: vec2(cx + 64, 20),
+          size: 13,
+          color: rgb(255, 135, 115),
+        });
+
+        drawRect({
+          pos: vec2(cx + 64, 38),
+          width: 170,
+          height: 10,
+          radius: 4,
+          color: rgb(24, 30, 48),
+        });
+        if (p2Hp > 0) {
+          drawRect({
+            pos: vec2(cx + 64, 38),
+            width: Math.max(4, 170 * p2Hp),
+            height: 10,
+            radius: 4,
+            color: rgb(245, 75, 65),
+          });
+        }
+
+        drawText({
+          text: "ARENA BRAWL MODE",
+          pos: vec2(cx + 64, 53),
+          size: 10,
+          color: rgb(185, 198, 225),
+        });
+
+        // 2. Bottom Controls Helper Pill (No square brackets!)
+        drawRect({
+          pos: vec2(cx - 310, GAME_CONFIG.HEIGHT - 34),
+          width: 620,
+          height: 24,
+          radius: 6,
+          color: rgb(12, 16, 28),
+          opacity: 0.82,
+          outline: { width: 1.5, color: rgb(52, 72, 112) },
         });
 
         drawText({
-          text: "PHASE 10: VOLT VS PYRO AI (CARRY FOES, ESCAPE GRAB & STAMINA SPRINT)",
-          pos: vec2(28, 25),
-          size: 12.5,
-          color: rgb(86, 220, 255),
-        });
-
-        drawText({
-          text: "SHIFT : Sprint (Stamina)  |  E : Grab Item or Foe  |  SPAM SPACE/J : Escape",
-          pos: vec2(28, 47),
-          size: 11.5,
-          color: rgb(210, 222, 245),
-        });
-
-        const stamPct = Math.round(player.stamina ?? 100);
-        drawText({
-          text: `VOLT HP: ${player.health}% (STAMINA: ${stamPct}% | KOs: ${player.ringOutCount})   |   PYRO HP: ${enemyBot.health}% (KOs: ${enemyBot.ringOutCount})`,
-          pos: vec2(28, 71),
-          size: 11,
-          color: player.isStaminaExhausted
-            ? rgb(255, 115, 75)
-            : rgb(255, 225, 85),
-        });
-
-        drawText({
-          text: `PYRO AI BRAIN: ${enemyBot.aiStateLabel}  —  Grab & throw Pyro into the Void!`,
-          pos: vec2(28, 95),
-          size: 11.5,
-          color: aiController.enabled ? rgb(110, 245, 165) : rgb(255, 145, 110),
+          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump / Escape  |  E : Grab  |  J / K : Punch & Throw  |  ESC : Menu",
+          pos: vec2(cx - 296, GAME_CONFIG.HEIGHT - 27),
+          size: 10.5,
+          color: rgb(205, 220, 245),
         });
       },
     },

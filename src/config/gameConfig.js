@@ -16,6 +16,15 @@ export const GAME_CONFIG = {
 };
 
 // ----------------------------------------------------------------------------
+// DEVELOPER SANDBOX & ACCESS CONTROL CONFIGURATION
+// ----------------------------------------------------------------------------
+export const DEV_CONFIG = {
+  // Secret PIN required to unlock the Developer Test Area ("devTest" scene)
+  PASSCODE: "1234",
+  STORAGE_KEY: "sky_bash_dev_unlocked",
+};
+
+// ----------------------------------------------------------------------------
 // PLAYER CONTROLS CONFIGURATION (Section 5)
 // ----------------------------------------------------------------------------
 // Keep all desktop controls in one place so you can easily rebind keys later.
