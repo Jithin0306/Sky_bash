@@ -95,40 +95,46 @@ export function registerMultiplayerArenaScene() {
     let localFighter = null;
 
     for (let i = 0; i < totalFighters; i++) {
+      const roster = FIGHTER_ROSTER[i] || FIGHTER_ROSTER[0];
       const slotInfo = activeSlots[i] || {
         slot: i,
-        name: (FIGHTER_ROSTER[i] || FIGHTER_ROSTER[0]).name,
+        name: roster.name,
+        playerName: i === 0 ? net.localPlayerName || "PLAYER 1" : `BOT ${roster.name}`,
         peerId: i === 0 ? net.selfPeerId : null,
         isBot: i !== 0,
         team: mode === "2v2" ? (i < 2 ? "blue" : "red") : "none",
       };
 
-      const roster = FIGHTER_ROSTER[i] || FIGHTER_ROSTER[0];
       const spawn = getRingSpawnCoordinates(i, totalFighters);
 
       const isLocalHuman = isOnline
-        ? slotInfo.peerId === net.selfPeerId
+        ? slotInfo.peerId === net.selfPeerId || (net.isHost && i === 0)
         : i === 0;
       const isRemoteHuman = isOnline && Boolean(slotInfo.peerId) && !isLocalHuman;
       const isBotFighter = !isLocalHuman && !isRemoteHuman;
 
-      const f = createPlayer({
-        x: spawn.x,
-        y: spawn.y,
-        name: roster.name,
+      const customPlayerName = isLocalHuman
+        ? net.localPlayerName || slotInfo.playerName || `PLAYER ${i + 1}`
+        : isRemoteHuman
+        ? slotInfo.playerName || `PLAYER ${i + 1}`
+        : `BOT ${roster.name}`;
+
+      const f = createPlayer(spawn.x, spawn.y, {
+        playerId: i + 1,
+        displayName: customPlayerName,
         isAI: isBotFighter,
-        palette: roster.palette,
+        colors: roster.palette,
         ringColor: roster.ringColor,
+        camera,
       });
 
       f.slotIndex = i;
+      f.fighterName = roster.name;
+      f.playerName = customPlayerName;
       f.peerId = slotInfo.peerId || `BOT_${i}`;
       f.team = mode === "2v2" ? slotInfo.team || (i < 2 ? "blue" : "red") : "none";
       f.uiColor = roster.uiColor;
-      f.displayTag =
-        mode === "2v2"
-          ? `P${i + 1} ${roster.name}`
-          : `P${i + 1} ${roster.name}`;
+      f.displayTag = customPlayerName;
       f.facing = vec2(spawn.facingX, spawn.facingY);
       f.cameraRef = camera;
       f.lives = 3;
@@ -248,6 +254,10 @@ export function registerMultiplayerArenaScene() {
         if (typeof data.hp === "number") target.health = data.hp;
         if (typeof data.lives === "number") target.lives = data.lives;
         if (typeof data.elim === "boolean") target.isEliminated = data.elim;
+        if (data.pName) {
+          target.playerName = data.pName;
+          target.displayTag = data.pName;
+        }
       };
 
       net.onRemoteCombat = (data, peerId) => {
@@ -330,7 +340,8 @@ export function registerMultiplayerArenaScene() {
             )[0];
           }
           const modeSuffix = mode === "ffa" ? "WINS FREE-FOR-ALL!" : "WINS THE DUEL!";
-          matchWinnerLabel = `P${bestFighter.slotIndex + 1} ${bestFighter.name} ${modeSuffix}`;
+          const winName = bestFighter.playerName || bestFighter.displayName || bestFighter.fighterName;
+          matchWinnerLabel = `${winName} ${modeSuffix}`;
           matchWinnerColor = bestFighter.uiColor || [95, 245, 255];
         }
       }
@@ -446,6 +457,7 @@ export function registerMultiplayerArenaScene() {
           netSyncAccum = 0;
           net.sendMove({
             slot: localFighter.slotIndex,
+            pName: localFighter.playerName,
             x: Math.round(localFighter.pos.x),
             y: Math.round(localFighter.pos.y),
             z: Math.round(localFighter.zHeight),
@@ -608,10 +620,11 @@ function createMultiplayerScoreboardHUD(
           });
 
           const teamLabel = isBlue ? "BLUE" : isRed ? "RED" : `P${i + 1}`;
+          const cardName = f.playerName || f.displayName || f.fighterName || "FIGHTER";
           drawText({
-            text: `${teamLabel} : ${f.name}`,
+            text: `${teamLabel}: ${cardName}`,
             pos: vec2(x + 10, y + 8),
-            size: 11.5,
+            size: 11,
             color: accent,
           });
 

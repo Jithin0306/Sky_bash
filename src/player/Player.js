@@ -43,7 +43,14 @@ export function createPlayer(
   spawnY = ARENA_CONFIG.CENTER_Y,
   options = {}
 ) {
-  const palette = options.colors || PLAYER_CONFIG.COLORS;
+  // Support calling createPlayer({ x, y, ... }) OR createPlayer(x, y, options)
+  if (typeof spawnX === "object" && spawnX !== null) {
+    options = spawnX;
+    spawnX = typeof options.x === "number" ? options.x : ARENA_CONFIG.CENTER_X;
+    spawnY = typeof options.y === "number" ? options.y : ARENA_CONFIG.CENTER_Y;
+  }
+
+  const palette = options.colors || options.palette || PLAYER_CONFIG.COLORS;
   const ringColor = options.ringColor || [25, 145, 215];
 
   const player = add([
@@ -58,7 +65,7 @@ export function createPlayer(
     {
       // --- Multiplayer & AI State Properties (Section 27) ---
       playerId: options.playerId || 1,
-      displayName: options.displayName || "VOLT",
+      displayName: options.displayName || options.name || "VOLT",
       isAI: Boolean(options.isAI),
       speedMultiplier: options.speedMultiplier ?? 1.0,
       aiStateLabel: "IDLE",

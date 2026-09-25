@@ -17,6 +17,10 @@ import {
 import { createArenaCamera } from "../systems/camera.js";
 import { createAmbientBackground, createFloatingArena } from "./arena.js";
 import { isDevAccessUnlocked } from "./devTest.js";
+import {
+  getLocalPlayerName,
+  setLocalPlayerName,
+} from "../network/trysteroManager.js";
 
 /**
  * Registers the "menu" scene with KAPLAY.
@@ -34,6 +38,9 @@ export function registerMenuScene() {
     let enteredPin = "";
     let statusMessage = "";
     let statusColor = [255, 220, 85];
+
+    let showNameModal = false;
+    let typedPlayerName = getLocalPlayerName();
 
     // Helper to attempt unlocking Developer Mode with the current PIN
     function verifyPinAndLaunch() {
@@ -57,6 +64,7 @@ export function registerMenuScene() {
         go("devTest");
       } else {
         showPinModal = true;
+        showNameModal = false;
         enteredPin = "";
         statusMessage = "TYPE 4-DIGIT DEV PIN ON KEYBOARD (DEFAULT: 1234)";
         statusColor = [135, 235, 255];
@@ -65,12 +73,21 @@ export function registerMenuScene() {
 
     // Keyboard shortcuts on Main Menu
     onKeyPress("space", () => {
+      if (showNameModal) {
+        if (typedPlayerName.length < 12) typedPlayerName += " ";
+        return;
+      }
       if (!showPinModal) {
         go("multiplayerLobby", { isOnline: false, mode: "1v1" });
       }
     });
 
     onKeyPress("enter", () => {
+      if (showNameModal) {
+        typedPlayerName = setLocalPlayerName(typedPlayerName || "PLAYER 1");
+        showNameModal = false;
+        return;
+      }
       if (showPinModal) {
         verifyPinAndLaunch();
       } else {
@@ -78,13 +95,21 @@ export function registerMenuScene() {
       }
     });
 
+    onKeyPress("n", () => {
+      if (!showPinModal && !showNameModal) {
+        showNameModal = true;
+        typedPlayerName = getLocalPlayerName();
+      }
+    });
+
     onKeyPress("m", () => {
-      if (!showPinModal) {
+      if (!showPinModal && !showNameModal) {
         go("multiplayerLobby", { isOnline: true, mode: "1v1" });
       }
     });
 
     onKeyPress("f2", () => {
+      if (showNameModal) return;
       if (showPinModal) {
         showPinModal = false;
       } else {
@@ -93,37 +118,57 @@ export function registerMenuScene() {
     });
 
     onKeyPress("escape", () => {
-      if (showPinModal) {
+      if (showNameModal) {
+        showNameModal = false;
+      } else if (showPinModal) {
         showPinModal = false;
         enteredPin = "";
       }
     });
 
     onKeyPress("backspace", () => {
-      if (showPinModal && enteredPin.length > 0) {
+      if (showNameModal && typedPlayerName.length > 0) {
+        typedPlayerName = typedPlayerName.slice(0, -1);
+      } else if (showPinModal && enteredPin.length > 0) {
         enteredPin = enteredPin.slice(0, -1);
       }
     });
 
-    // Listen for digit keys 0-9 when the Developer PIN modal is open
-    const digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-    for (const d of digits) {
-      onKeyPress(d, () => {
-        if (!showPinModal) return;
-        if (enteredPin.length < 4) {
-          enteredPin += d;
+    // Listen for characters in Name Modal & digits in PIN Modal
+    onCharInput((ch) => {
+      if (showNameModal) {
+        const cleanCh = ch.replace(/[^a-zA-Z0-9 _-]/g, "").toUpperCase();
+        if (cleanCh && typedPlayerName.length < 12) {
+          typedPlayerName += cleanCh;
+        }
+      } else if (showPinModal) {
+        if (/^[0-9]$/.test(ch) && enteredPin.length < 4) {
+          enteredPin += ch;
           if (enteredPin.length === 4) {
             verifyPinAndLaunch();
           }
         }
-      });
-    }
+      }
+    });
 
-    // Mouse Click Support for Single Player, Online Multiplayer, & Dev Access buttons
+    // Mouse Click Support for Single Player, Online Multiplayer, Name Box, & Dev Access buttons
     onMousePress("left", () => {
       const m = mousePos();
       const cx = GAME_CONFIG.WIDTH * 0.5;
       const cy = GAME_CONFIG.HEIGHT * 0.5;
+
+      if (showNameModal) {
+        if (m.x >= cx - 150 && m.x <= cx - 10 && m.y >= cy + 72 && m.y <= cy + 108) {
+          typedPlayerName = setLocalPlayerName(typedPlayerName || "PLAYER 1");
+          showNameModal = false;
+          return;
+        }
+        if (m.x >= cx + 10 && m.x <= cx + 150 && m.y >= cy + 72 && m.y <= cy + 108) {
+          showNameModal = false;
+          return;
+        }
+        return;
+      }
 
       if (showPinModal) {
         if (
@@ -135,6 +180,18 @@ export function registerMenuScene() {
           showPinModal = false;
           enteredPin = "";
         }
+        return;
+      }
+
+      // 0. Click Custom Player Name Pill on Main Menu
+      if (
+        m.x >= cx - 175 &&
+        m.x <= cx + 175 &&
+        m.y >= cy - 102 &&
+        m.y <= cy - 72
+      ) {
+        showNameModal = true;
+        typedPlayerName = getLocalPlayerName();
         return;
       }
 
@@ -171,7 +228,7 @@ export function registerMenuScene() {
       }
     });
 
-    // Render the Main Menu UI & Developer PIN Modal
+    // Render the Main Menu UI & Modals
     add([
       fixed(),
       z(1000),
@@ -181,6 +238,7 @@ export function registerMenuScene() {
           const cy = GAME_CONFIG.HEIGHT * 0.5;
           const t = time();
           const devUnlocked = isDevAccessUnlocked();
+          const currentName = getLocalPlayerName();
 
           // Dark translucent backdrop vignette
           drawRect({
@@ -188,14 +246,14 @@ export function registerMenuScene() {
             width: GAME_CONFIG.WIDTH,
             height: GAME_CONFIG.HEIGHT,
             color: rgb(8, 12, 24),
-            opacity: showPinModal ? 0.82 : 0.52,
+            opacity: showPinModal || showNameModal ? 0.82 : 0.52,
           });
 
           // Main Title Panel
           drawRect({
-            pos: vec2(cx - 280, cy - 195),
+            pos: vec2(cx - 280, cy - 205),
             width: 560,
-            height: 365,
+            height: 380,
             radius: 16,
             color: rgb(14, 20, 36),
             opacity: 0.94,
@@ -208,16 +266,32 @@ export function registerMenuScene() {
           // Game Title & Subtitle
           drawText({
             text: "SKY BASH : 2.5D ARENA BRAWL",
-            pos: vec2(cx - 196, cy - 162),
+            pos: vec2(cx - 196, cy - 176),
             size: 24,
             color: rgb(95, 235, 255),
           });
 
           drawText({
             text: "1v1 DUEL  |  2v2 TEAMS  |  UP TO 6-PLAYER FREE-FOR-ALL CHAOS",
-            pos: vec2(cx - 208, cy - 126),
+            pos: vec2(cx - 208, cy - 142),
             size: 11.5,
             color: rgb(195, 212, 240),
+          });
+
+          // Custom Player Name Badge (Click or Press N to Edit!)
+          drawRect({
+            pos: vec2(cx - 175, cy - 102),
+            width: 350,
+            height: 30,
+            radius: 8,
+            color: rgb(22, 34, 58),
+            outline: { width: 1.5, color: rgb(255, 220, 85) },
+          });
+          drawText({
+            text: `PLAYER NAME: ${currentName}   (PRESS N OR CLICK TO EDIT)`,
+            pos: vec2(cx - 152, cy - 92),
+            size: 11,
+            color: rgb(255, 232, 105),
           });
 
           // Button 1: SINGLE PLAYER (VS AI BOTS)
@@ -301,6 +375,78 @@ export function registerMenuScene() {
             size: 10,
             color: rgb(175, 192, 220),
           });
+
+          // Modal Overlay when Custom Player Name Editor is open (Key N / Click)
+          if (showNameModal) {
+            drawRect({
+              pos: vec2(cx - 215, cy - 115),
+              width: 430,
+              height: 245,
+              radius: 14,
+              color: rgb(10, 16, 30),
+              opacity: 0.98,
+              outline: { width: 3, color: rgb(255, 220, 85) },
+            });
+            drawText({
+              text: "SET YOUR CUSTOM PLAYER NAME",
+              pos: vec2(cx - 142, cy - 86),
+              size: 15,
+              color: rgb(255, 230, 95),
+            });
+            drawText({
+              text: "Type up to 12 letters/numbers and press ENTER to save:",
+              pos: vec2(cx - 165, cy - 56),
+              size: 11,
+              color: rgb(205, 225, 248),
+            });
+
+            drawRect({
+              pos: vec2(cx - 165, cy - 22),
+              width: 330,
+              height: 48,
+              radius: 8,
+              color: rgb(22, 32, 56),
+              outline: { width: 2, color: rgb(115, 245, 255) },
+            });
+
+            const cursorBlink = Math.floor(t * 2.5) % 2 === 0 ? "_" : "";
+            drawText({
+              text: `${typedPlayerName}${cursorBlink}`,
+              pos: vec2(cx - 145, cy - 7),
+              size: 18,
+              color: rgb(135, 255, 215),
+            });
+
+            drawRect({
+              pos: vec2(cx - 150, cy + 72),
+              width: 140,
+              height: 34,
+              radius: 7,
+              color: rgb(28, 155, 105),
+              outline: { width: 1.5, color: rgb(135, 255, 205) },
+            });
+            drawText({
+              text: "ENTER : SAVE",
+              pos: vec2(cx - 122, cy + 83),
+              size: 11.5,
+              color: rgb(255, 255, 255),
+            });
+
+            drawRect({
+              pos: vec2(cx + 10, cy + 72),
+              width: 140,
+              height: 34,
+              radius: 7,
+              color: rgb(42, 48, 72),
+              outline: { width: 1.5, color: rgb(145, 165, 205) },
+            });
+            drawText({
+              text: "ESC : CANCEL",
+              pos: vec2(cx + 36, cy + 83),
+              size: 11.5,
+              color: rgb(225, 235, 255),
+            });
+          }
 
           // Modal Overlay when Developer PIN is requested
           if (showPinModal) {
