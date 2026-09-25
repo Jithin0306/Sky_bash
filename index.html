@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyRing Brawl — 2.5D Arena Prototype</title>
+  <style>
+    /* Reset browser margins and center the KAPLAY game canvas */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0b0e17;
+      color: #f0f4f8;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    canvas {
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+  </style>
+
+  <!-- Import Map allows standard ES module imports for KAPLAY without needing a bundler -->
+  <script type="importmap">
+    {
+      "imports": {
+        "kaplay": "https://unpkg.com/kaplay@3001.0.19/dist/kaplay.mjs"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Entry point for our modular game architecture -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
