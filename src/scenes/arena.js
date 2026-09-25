@@ -107,9 +107,9 @@ export function registerArenaScene() {
       }
     });
 
-    // 8. Create the interactive [E] Pick Up target highlight & Milestone 7 HUD
+    // 8. Create the interactive E-Grab target highlight & Phase 7 HUD
     createPickupPromptRenderer(player);
-    createMilestone7HUD(player, physicsObjects, camera);
+    createPhase7HUD(player, physicsObjects, camera);
   });
 }
 
@@ -825,8 +825,10 @@ function resolvePropFootprintCollisions(player, props) {
 }
 
 /**
- * Renders a pulsing turquoise target ring on the floor and a compact "[E] GRAB"
+ * Renders a pulsing turquoise target ring on the floor and a compact "E : GRAB"
  * prompt above the nearest pickupable object whenever Volt's hands are free!
+ * (Note: Never use square brackets like [E] inside KAPLAY drawText, because KAPLAY
+ * parses square brackets as rich-text style tags!)
  */
 function createPickupPromptRenderer(player) {
   add([
@@ -837,7 +839,7 @@ function createPickupPromptRenderer(player) {
         if (player.heldObject || !player.nearestPickupCandidate) return;
 
         const target = player.nearestPickupCandidate;
-        if (!target.exists() || target.isCarried || target.isFallingInVoid) return;
+        if (!target || target.isCarried || target.isFallingInVoid) return;
 
         const t = time();
         const pulse = Math.sin(t * 7) * 2.5;
@@ -859,7 +861,7 @@ function createPickupPromptRenderer(player) {
         });
         popTransform();
 
-        // 2. Compact floating "[E] GRAB" pill above the object
+        // 2. Compact floating "E : GRAB" pill above the object (no square brackets!)
         const badgeY =
           target.pos.y -
           (target.zHeight || 0) -
@@ -871,8 +873,8 @@ function createPickupPromptRenderer(player) {
         pushTranslate(target.pos.x, badgeY);
 
         drawRect({
-          pos: vec2(-27, -10),
-          width: 54,
+          pos: vec2(-28, -10),
+          width: 56,
           height: 18,
           radius: 5,
           color: rgb(14, 22, 38),
@@ -884,8 +886,8 @@ function createPickupPromptRenderer(player) {
         });
 
         drawText({
-          text: "[E] GRAB",
-          pos: vec2(-21, -5),
+          text: "E : GRAB",
+          pos: vec2(-22, -5),
           size: 10,
           color: rgb(125, 255, 230),
         });
@@ -897,9 +899,9 @@ function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the Milestone 7 HUD card with live Pick-Up & Carry telemetry.
+ * Displays the Phase 7 HUD card with live Pick-Up & Carry telemetry.
  */
-function createMilestone7HUD(player, physicsObjects, camera) {
+function createPhase7HUD(player, physicsObjects, camera) {
   let isZoomedIn = false;
 
   onKeyPress("c", () => camera.shake(12));
@@ -928,14 +930,14 @@ function createMilestone7HUD(player, physicsObjects, camera) {
         });
 
         drawText({
-          text: "MILESTONE 7: PICK-UP & OVERHEAD CARRY SYSTEM",
+          text: "PHASE 7: PICK-UP & OVERHEAD CARRY SYSTEM",
           pos: vec2(28, 26),
           size: 13,
           color: rgb(86, 220, 255),
         });
 
         drawText({
-          text: "E : Pick Up / Drop  |  Q : Drop Object  |  J / Click : Punch / Drop",
+          text: "E : Pick Up / Drop  |  Q : Drop Object  |  J / Click : Punch",
           pos: vec2(28, 48),
           size: 12,
           color: rgb(210, 222, 245),
@@ -957,7 +959,7 @@ function createMilestone7HUD(player, physicsObjects, camera) {
           });
 
           drawText({
-            text: "STATUS: Holding overhead! Press [E], [Q], or [J] to Drop it!",
+            text: "STATUS: Holding overhead! Press E or Q to Drop it!",
             pos: vec2(28, 94),
             size: 12,
             color: rgb(110, 245, 165),
@@ -965,7 +967,7 @@ function createMilestone7HUD(player, physicsObjects, camera) {
         } else {
           const candidate = player.nearestPickupCandidate;
           const candText = candidate
-            ? `IN RANGE: ${(candidate.objectType || "OBJECT").toUpperCase()} (${candidate.mass}kg) -> Press [E] to Hoist!`
+            ? `IN RANGE: ${(candidate.objectType || "OBJECT").toUpperCase()} (${candidate.mass}kg) -> Press E to Hoist!`
             : "HANDS FREE: Walk near any Crate, Ball, or Heavy Box!";
 
           drawText({
@@ -986,4 +988,5 @@ function createMilestone7HUD(player, physicsObjects, camera) {
     },
   ]);
 }
+
 
