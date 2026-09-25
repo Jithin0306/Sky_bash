@@ -235,10 +235,10 @@ export const COMBAT_CONFIG = {
 
   // --- Phase 8: 2.5D Throw System Configuration (Section 9) ---
   // Upward vertical arc velocity (velZ) when hurling an object (scaled by 1/sqrt(mass))
-  THROW_ARC_VEL_Z: 235,
+  THROW_ARC_VEL_Z: 165,
 
   // Fraction of the player's running velocity added to the thrown projectile
-  THROW_PLAYER_MOMENTUM_FACTOR: 0.38,
+  THROW_PLAYER_MOMENTUM_FACTOR: 0.22,
 
   // Duration of Volt's two-handed overhead throw follow-through animation (in seconds)
   THROW_ANIM_DURATION: 0.22,
@@ -260,7 +260,7 @@ export const OBJECTS_CONFIG = {
     mass: 1.0,
     friction: 820,
     bounce: 0.25,
-    throwForce: 520,
+    throwForce: 260,
     damage: 25,
     footprintRadius: 20,
     propHeight: 36,
@@ -272,7 +272,7 @@ export const OBJECTS_CONFIG = {
     mass: 0.78,
     friction: 540,
     bounce: 0.75,
-    throwForce: 650,
+    throwForce: 325,
     damage: 15,
     footprintRadius: 17,
     propHeight: 32,
@@ -284,7 +284,7 @@ export const OBJECTS_CONFIG = {
     mass: 2.6,
     friction: 1450,
     bounce: 0.08,
-    throwForce: 360,
+    throwForce: 180,
     damage: 50,
     footprintRadius: 24,
     propHeight: 42,

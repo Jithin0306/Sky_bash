@@ -157,7 +157,7 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
   }
 
   // 8. Phase 8: Clear `isThrownProjectile` once the object settles on the floor
-  if (obj.isThrownProjectile && obj.isGrounded && speed < 115) {
+  if (obj.isThrownProjectile && obj.isGrounded && speed < 65) {
     obj.isThrownProjectile = false;
     obj.thrower = null;
     obj.throwHitSet.clear();
@@ -256,7 +256,7 @@ function resolveObjectToObjectCollisions(objects, camera = null) {
             thrownObj &&
             otherObj &&
             !thrownObj.throwHitSet.has(otherObj) &&
-            Math.abs(velAlongNormal) > 150
+            Math.abs(velAlongNormal) > 85
           ) {
             thrownObj.throwHitSet.add(otherObj);
             otherObj.velZ = Math.max(otherObj.velZ, 165 / Math.sqrt(otherObj.mass));
@@ -332,7 +332,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
           if (
             obj.isThrownProjectile &&
             !obj.throwHitSet.has(prop) &&
-            objSpeed > 110
+            objSpeed > 65
           ) {
             obj.throwHitSet.add(prop);
 
@@ -340,7 +340,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
             const hitDirX = -nx;
             const hitDirY = -ny;
             const knockbackSpeed =
-              (280 + objSpeed * 0.55) * Math.sqrt(obj.mass);
+              (290 + objSpeed * 0.65) * Math.sqrt(obj.mass);
 
             prop.velocity.x = hitDirX * knockbackSpeed;
             prop.velocity.y =
@@ -354,7 +354,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
             // Ricochet the thrown object upward slightly on impact
             obj.velocity.x *= -0.35;
             obj.velocity.y *= -0.35;
-            obj.velZ = 165;
+            obj.velZ = 150;
             obj.isGrounded = false;
             obj.squashFactor = 0.30;
             obj.hitFlashTimer = 0.14;
@@ -376,7 +376,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
               (prop.zHeight || 0) + 28,
               impactWord
             );
-          } else if (objSpeed > 80) {
+          } else if (objSpeed > 60) {
             // Normal sliding/bumping momentum transfer
             prop.velocity.x -= nx * objSpeed * 0.55 * obj.mass;
             prop.velocity.y -=
@@ -396,7 +396,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
           if (
             obj.isThrownProjectile &&
             !obj.throwHitSet.has(prop) &&
-            objSpeed > 130
+            objSpeed > 75
           ) {
             obj.throwHitSet.add(prop);
             if (typeof prop.onPunchHit === "function") {
