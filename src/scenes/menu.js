@@ -65,14 +65,22 @@ export function registerMenuScene() {
 
     // Keyboard shortcuts on Main Menu
     onKeyPress("space", () => {
-      if (!showPinModal) go("arena");
+      if (!showPinModal) {
+        go("multiplayerLobby", { isOnline: false, mode: "1v1" });
+      }
     });
 
     onKeyPress("enter", () => {
       if (showPinModal) {
         verifyPinAndLaunch();
       } else {
-        go("arena");
+        go("multiplayerLobby", { isOnline: false, mode: "1v1" });
+      }
+    });
+
+    onKeyPress("m", () => {
+      if (!showPinModal) {
+        go("multiplayerLobby", { isOnline: true, mode: "1v1" });
       }
     });
 
@@ -111,14 +119,13 @@ export function registerMenuScene() {
       });
     }
 
-    // Mouse Click Support for Play Normal Game button & Dev Access button
+    // Mouse Click Support for Single Player, Online Multiplayer, & Dev Access buttons
     onMousePress("left", () => {
       const m = mousePos();
       const cx = GAME_CONFIG.WIDTH * 0.5;
       const cy = GAME_CONFIG.HEIGHT * 0.5;
 
       if (showPinModal) {
-        // Check Cancel button on modal
         if (
           m.x >= cx - 75 &&
           m.x <= cx + 75 &&
@@ -131,23 +138,34 @@ export function registerMenuScene() {
         return;
       }
 
-      // 1. PLAY NORMAL GAME Button Bounds
+      // 1. SINGLE PLAYER (VS AI BOTS) Button Bounds
       if (
-        m.x >= cx - 175 &&
-        m.x <= cx + 175 &&
-        m.y >= cy - 10 &&
-        m.y <= cy + 48
+        m.x >= cx - 195 &&
+        m.x <= cx + 195 &&
+        m.y >= cy - 58 &&
+        m.y <= cy - 2
       ) {
-        go("arena");
+        go("multiplayerLobby", { isOnline: false, mode: "1v1" });
         return;
       }
 
-      // 2. DEVELOPER TEST LAB Button Bounds
+      // 2. ONLINE MULTIPLAYER (TRYSTERO P2P) Button Bounds
       if (
-        m.x >= cx - 175 &&
-        m.x <= cx + 175 &&
-        m.y >= cy + 68 &&
-        m.y <= cy + 118
+        m.x >= cx - 195 &&
+        m.x <= cx + 195 &&
+        m.y >= cy + 14 &&
+        m.y <= cy + 70
+      ) {
+        go("multiplayerLobby", { isOnline: true, mode: "1v1" });
+        return;
+      }
+
+      // 3. DEVELOPER TEST LAB Button Bounds
+      if (
+        m.x >= cx - 195 &&
+        m.x <= cx + 195 &&
+        m.y >= cy + 88 &&
+        m.y <= cy + 138
       ) {
         requestDevAccess();
       }
@@ -175,9 +193,9 @@ export function registerMenuScene() {
 
           // Main Title Panel
           drawRect({
-            pos: vec2(cx - 265, cy - 185),
-            width: 530,
-            height: 350,
+            pos: vec2(cx - 280, cy - 195),
+            width: 560,
+            height: 365,
             radius: 16,
             color: rgb(14, 20, 36),
             opacity: 0.94,
@@ -190,51 +208,74 @@ export function registerMenuScene() {
           // Game Title & Subtitle
           drawText({
             text: "SKY BASH : 2.5D ARENA BRAWL",
-            pos: vec2(cx - 196, cy - 148),
+            pos: vec2(cx - 196, cy - 162),
             size: 24,
             color: rgb(95, 235, 255),
           });
 
           drawText({
-            text: "SELECT GAME MODE (NORMAL MATCH OR AUTHORIZED DEV LAB)",
-            pos: vec2(cx - 208, cy - 112),
-            size: 12,
+            text: "1v1 DUEL  |  2v2 TEAMS  |  UP TO 6-PLAYER FREE-FOR-ALL CHAOS",
+            pos: vec2(cx - 208, cy - 126),
+            size: 11.5,
             color: rgb(195, 212, 240),
           });
 
-          // Mode 1: PLAY NORMAL GAME Button
-          const pulseScale = 1 + Math.sin(t * 4) * 0.015;
+          // Button 1: SINGLE PLAYER (VS AI BOTS)
+          const pulseScale = 1 + Math.sin(t * 4) * 0.012;
           pushTransform();
-          pushTranslate(cx, cy + 18);
+          pushTranslate(cx, cy - 30);
           pushScale(pulseScale, pulseScale);
 
           drawRect({
-            pos: vec2(-175, -28),
-            width: 350,
+            pos: vec2(-195, -28),
+            width: 390,
             height: 56,
             radius: 10,
-            color: rgb(28, 155, 215),
+            color: rgb(28, 148, 212),
             outline: { width: 2.5, color: rgb(155, 245, 255) },
           });
 
           drawText({
-            text: "PLAY NORMAL GAME (ENTER / CLICK)",
-            pos: vec2(-148, -14),
-            size: 14.5,
+            text: "SINGLE PLAYER — VS AI BOTS (ENTER / CLICK)",
+            pos: vec2(-168, -14),
+            size: 14,
             color: rgb(255, 255, 255),
           });
           drawText({
-            text: "Standard Volt vs Pyro Arena Match — No Debug Cheats",
-            pos: vec2(-142, 7),
+            text: "Play 1v1 Duel, 2v2 Teams, or 3-6P Free-For-All vs AI Bots",
+            pos: vec2(-162, 7),
             size: 10.5,
             color: rgb(215, 248, 255),
           });
           popTransform();
 
-          // Mode 2: DEVELOPER TEST LAB Button (Protected by Developer PIN)
+          // Button 2: ONLINE MULTIPLAYER (TRYSTERO P2P — NO SERVER)
           drawRect({
-            pos: vec2(cx - 175, cy + 68),
-            width: 350,
+            pos: vec2(cx - 195, cy + 14),
+            width: 390,
+            height: 56,
+            radius: 10,
+            color: rgb(22, 138, 98),
+            outline: { width: 2.5, color: rgb(115, 255, 195) },
+          });
+
+          drawText({
+            text: "ONLINE MULTIPLAYER — P2P ROOMS (PRESS M)",
+            pos: vec2(cx - 168, cy + 28),
+            size: 14,
+            color: rgb(255, 255, 255),
+          });
+          drawText({
+            text: "1v1 Online, 2v2 Teams & Up to 6P Free-For-All (4-Digit Room Code)",
+            pos: vec2(cx - 174, cy + 49),
+            size: 10,
+            color: rgb(215, 255, 235),
+          });
+
+          // Button 3: DEVELOPER TEST LAB Button (Protected by Developer PIN)
+          drawRect({
+            pos: vec2(cx - 195, cy + 88),
+            width: 390,
             height: 50,
             radius: 10,
             color: devUnlocked ? rgb(18, 85, 58) : rgb(28, 34, 54),
@@ -249,14 +290,14 @@ export function registerMenuScene() {
             : "DEVELOPER TEST AREA — LOCKED (PRESS F2)";
           drawText({
             text: devBtnTitle,
-            pos: vec2(cx - 150, cy + 80),
+            pos: vec2(cx - 150, cy + 100),
             size: 13,
             color: devUnlocked ? rgb(110, 255, 175) : rgb(255, 215, 85),
           });
 
           drawText({
             text: "Restricted Element Spawner, Target Dummy & AI Debug Tools",
-            pos: vec2(cx - 152, cy + 99),
+            pos: vec2(cx - 152, cy + 119),
             size: 10,
             color: rgb(175, 192, 220),
           });

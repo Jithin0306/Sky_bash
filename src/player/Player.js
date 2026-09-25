@@ -379,18 +379,69 @@ function drawCharacterVisuals(player, C, isRenderedOverhead = false) {
   const t = player.animTimer;
 
   // --------------------------------------------------------------------------
-  // A. 2.5D GROUND SHADOW & PLAYER RING (skip when rendered overhead in hands)
+  // A. 2.5D GROUND SHADOW & PLAYER / TEAM RING (skip when rendered overhead in hands)
   // --------------------------------------------------------------------------
   if (!isRenderedOverhead) {
     const overArena = isPointOnArena(player.pos.x, player.pos.y);
+
+    // Draw outer 2v2 Team Halo Ring if in Team Mode ("blue" or "red")
+    if (overArena && !player.isFallingInVoid && player.team && player.team !== "none") {
+      const isBlueTeam = player.team === "blue";
+      const teamColor = isBlueTeam ? rgb(35, 165, 255) : rgb(255, 65, 65);
+      pushTransform();
+      pushScale(1, ARENA_CONFIG.PERSPECTIVE_Y_SCALE);
+      drawCircle({
+        pos: vec2(0, 0),
+        radius: PLAYER_CONFIG.FOOTPRINT_RADIUS + 8,
+        fill: false,
+        outline: {
+          width: 3.5,
+          color: teamColor,
+        },
+        opacity: 0.9,
+      });
+      popTransform();
+    }
 
     drawGroundShadow({
       radius: PLAYER_CONFIG.FOOTPRINT_RADIUS,
       zHeight: player.zHeight,
       overArena,
       isFallingInVoid: player.isFallingInVoid,
-      ringColor: player.ringColor || [25, 145, 215],
+      ringColor:
+        player.team === "blue"
+          ? [35, 165, 255]
+          : player.team === "red"
+          ? [255, 65, 65]
+          : player.ringColor || [25, 145, 215],
     });
+
+    // Floating Fighter Name Badge above head (for Multi-Fighter & Online modes)
+    if (player.displayTag && !player.isFallingInVoid) {
+      const badgeColor =
+        player.team === "blue"
+          ? rgb(95, 215, 255)
+          : player.team === "red"
+          ? rgb(255, 115, 115)
+          : rgb(...(player.uiColor || [135, 240, 255]));
+      const tagW = Math.max(48, player.displayTag.length * 6.5 + 12);
+      const tagY = -player.zHeight - 78;
+      drawRect({
+        pos: vec2(-tagW * 0.5, tagY),
+        width: tagW,
+        height: 15,
+        radius: 4,
+        color: rgb(10, 14, 24),
+        opacity: 0.78,
+        outline: { width: 1.2, color: badgeColor },
+      });
+      drawText({
+        text: player.displayTag,
+        pos: vec2(-tagW * 0.5 + 6, tagY + 3),
+        size: 9.5,
+        color: badgeColor,
+      });
+    }
   }
 
   // --------------------------------------------------------------------------

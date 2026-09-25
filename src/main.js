@@ -12,6 +12,8 @@ import { GAME_CONFIG } from "./config/gameConfig.js";
 import { registerMenuScene } from "./scenes/menu.js";
 import { registerArenaScene } from "./scenes/arena.js";
 import { registerDevTestScene, isDevAccessUnlocked } from "./scenes/devTest.js";
+import { registerMultiplayerLobbyScene } from "./scenes/multiplayerLobby.js";
+import { registerMultiplayerArenaScene } from "./scenes/multiplayerArena.js";
 
 // 1. Initialize KAPLAY
 // By default, kaplay() attaches its helper functions (scene, add, pos, vec2,
@@ -26,16 +28,27 @@ kaplay({
 });
 
 // 2. Register all game scenes:
-// - "menu"    : Mode Selection Title Screen & Developer PIN Gate
-// - "arena"   : Normal Game Scene (Player vs AI Match Mode, zero debug cheats)
-// - "devTest" : Restricted Developer Test Sandbox (Spawner 1-6, Target Dummy, Debug Tools)
+// - "menu"             : Mode Selection Title Screen & Developer PIN Gate
+// - "multiplayerLobby" : Single-Player Bot Mode Setup & Online Trystero Room Lobby (1v1, 2v2, 3-6P FFA)
+// - "multiplayerArena" : 2-to-6 Fighter Synchronized Arena (Single-Player vs Bots & Online P2P)
+// - "arena"            : Classic 1v1 Arena Scene
+// - "devTest"          : Restricted Developer Test Sandbox (Spawner 1-9, Target Dummy, Debug Tools)
 registerMenuScene();
+registerMultiplayerLobbyScene();
+registerMultiplayerArenaScene();
 registerArenaScene();
 registerDevTestScene();
 
-// 3. Start on the Main Menu (or directly in "devTest" if ?dev=1234 URL param is passed)
+// 3. Start on the Main Menu (or auto-join if ?room=XXXX Invite Link or ?dev=1234 is passed!)
 const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get("dev") && isDevAccessUnlocked()) {
+const inviteRoomCode = urlParams.get("room");
+if (inviteRoomCode) {
+  go("multiplayerLobby", {
+    isOnline: true,
+    roomCode: inviteRoomCode,
+    joinAsGuest: true,
+  });
+} else if (urlParams.get("dev") && isDevAccessUnlocked()) {
   go("devTest");
 } else {
   go("menu");

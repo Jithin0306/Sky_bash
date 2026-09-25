@@ -143,6 +143,10 @@ export function findNearestPickupCandidate(player) {
       obj.isExplodedCooldown ||
       obj.isWaitingToDrop ||
       obj.stuckToTarget ||
+      (obj.objectType === "fighter" &&
+        player.team &&
+        player.team !== "none" &&
+        obj.team === player.team) ||
       (obj.objectType === "mine" && (obj.isArmed || obj.isTriggered)) ||
       (obj.grabImmunityTimer && obj.grabImmunityTimer > 0)
     ) {
@@ -422,6 +426,14 @@ function checkPunchHitbox(player, camera) {
 
   for (const target of targets) {
     if (target === player || target.isCarried || target.isExplodedCooldown) continue;
+    if (
+      target.objectType === "fighter" &&
+      player.team &&
+      player.team !== "none" &&
+      target.team === player.team
+    ) {
+      continue;
+    }
     if (player.hitTargetsThisSwing.has(target)) continue;
 
     const targetZ = target.zHeight || 0;
