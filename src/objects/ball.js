@@ -12,7 +12,7 @@ import { createPhysicsObject } from "./GameObject.js";
 /**
  * Spawns a 2.5D Bouncing Ball at (x, y).
  */
-export function createBall(x, y, startZ = 240) {
+export function createBall(x, y, startZ = 240, initialDropDelay = 0) {
   const cfg = OBJECTS_CONFIG.BALL;
 
   return createPhysicsObject({
@@ -20,6 +20,7 @@ export function createBall(x, y, startZ = 240) {
     x,
     y,
     startZ,
+    initialDropDelay,
     renderVisuals(obj, isFlashing) {
       drawBallVisuals(obj.rollAngle, isFlashing);
     },

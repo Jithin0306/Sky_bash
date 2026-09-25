@@ -16,7 +16,7 @@ import { createPhysicsObject } from "./GameObject.js";
 /**
  * Spawns a 2.5D Sky Fuse Bomb at (x, y).
  */
-export function createBomb(x, y, startZ = 240) {
+export function createBomb(x, y, startZ = 240, initialDropDelay = 0) {
   const cfg = OBJECTS_CONFIG.BOMB;
 
   const bomb = createPhysicsObject({
@@ -24,6 +24,7 @@ export function createBomb(x, y, startZ = 240) {
     x,
     y,
     startZ,
+    initialDropDelay,
     renderVisuals(obj, isFlashing) {
       drawBombVisuals(
         isFlashing,
@@ -143,7 +144,7 @@ export function detonateBomb(bomb, fighterList, objects, props, camera) {
   bomb.isLit = false;
   bomb.isThrownProjectile = false;
   bomb.isExplodedCooldown = true;
-  bomb.respawnTimer = 2.4;
+  bomb.respawnTimer = rand(6.0, 9.5); // Generous 6.0s-9.5s wait before next bomb drops!
 
   const radius = bomb.blastRadius || 145;
   const maxForce = bomb.blastForce || 680;

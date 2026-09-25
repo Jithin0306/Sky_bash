@@ -13,7 +13,7 @@ import { createPhysicsObject } from "./GameObject.js";
 /**
  * Spawns a 2.5D Iron Heavy Box at (x, y).
  */
-export function createHeavyBox(x, y, startZ = 220) {
+export function createHeavyBox(x, y, startZ = 220, initialDropDelay = 0) {
   const cfg = OBJECTS_CONFIG.HEAVY_BOX;
 
   return createPhysicsObject({
@@ -21,6 +21,7 @@ export function createHeavyBox(x, y, startZ = 220) {
     x,
     y,
     startZ,
+    initialDropDelay,
     renderVisuals(obj, isFlashing) {
       drawHeavyBoxVisuals(isFlashing);
     },

@@ -10,7 +10,7 @@
 // - Automatic `"punchable"` & `"pickupable"` tags
 // ============================================================================
 
-import { ARENA_CONFIG } from "../config/gameConfig.js";
+import { ARENA_CONFIG, OBJECTS_CONFIG } from "../config/gameConfig.js";
 import { isPointOnArena } from "../scenes/arena.js";
 import {
   computeDepthScale,
@@ -27,9 +27,10 @@ export function createPhysicsObject(opts) {
   const spawnX = opts.x ?? ARENA_CONFIG.CENTER_X;
   const spawnY = opts.y ?? ARENA_CONFIG.CENTER_Y;
   const startZ = opts.startZ ?? 180; // Drops in from the sky when spawned!
+  const initialDropDelay = opts.initialDropDelay ?? 0;
 
   const obj = add([
-    pos(spawnX, spawnY),
+    pos(initialDropDelay > 0 ? -2000 : spawnX, initialDropDelay > 0 ? -2000 : spawnY),
     z(Math.round(spawnY)),
     "physicsObject",
     "punchable",
@@ -61,6 +62,8 @@ export function createPhysicsObject(opts) {
       isThrownProjectile: false,
       thrower: null,
       throwHitSet: new Set(),
+      isWaitingToDrop: initialDropDelay > 0,
+      skyDropDelayTimer: initialDropDelay,
 
       // --- Visual Feedback State ---
       rollAngle: 0,
@@ -69,12 +72,9 @@ export function createPhysicsObject(opts) {
 
       /**
        * Called automatically by `playerCombat.js` when a player's punch hits this object!
-       * Notice how knockback velocity is divided by `this.mass`:
-       * - Light objects (Ball, mass 0.78) launch fast and bounce!
-       * - Medium objects (Crate, mass 1.0) slide a solid distance!
-       * - Heavy objects (Heavy Box, mass 2.6) budge a short, heavy distance!
        */
       onPunchHit(dir, force) {
+        if (this.isWaitingToDrop || this.isExplodedCooldown) return;
         this.hitFlashTimer = 0.16;
         this.squashFactor = 0.32;
 
@@ -89,20 +89,49 @@ export function createPhysicsObject(opts) {
       },
 
       /**
-       * Resets the object high in the sky above its original spawn point.
+       * Schedules a delayed sky respawn (5.5s to 9.5s) after an item falls into the void
+       * so items don't flood back onto the arena immediately!
+       */
+      scheduleSkyRespawn(customDelay = null) {
+        if (this.carrier && this.carrier.heldObject === this) {
+          this.carrier.heldObject = null;
+        }
+        this.carrier = null;
+        this.isCarried = false;
+        this.isThrownProjectile = false;
+        this.thrower = null;
+        this.throwHitSet.clear();
+        this.isFallingInVoid = false;
+        this.isWaitingToDrop = true;
+        this.skyDropDelayTimer =
+          customDelay ??
+          rand(
+            OBJECTS_CONFIG.SKY_RESPAWN_DELAY_MIN || 5.5,
+            OBJECTS_CONFIG.SKY_RESPAWN_DELAY_MAX || 9.5
+          );
+        this.pos.x = -2000;
+        this.pos.y = -2000;
+        this.velocity = vec2(0, 0);
+        this.velZ = 0;
+      },
+
+      /**
+       * Drops the object fresh from high in the sky above its spawn point.
        */
       respawnFromSky() {
         if (this.carrier && this.carrier.heldObject === this) {
           this.carrier.heldObject = null;
         }
         this.carrier = null;
+        this.isWaitingToDrop = false;
+        this.skyDropDelayTimer = 0;
         this.isThrownProjectile = false;
         this.thrower = null;
         this.throwHitSet.clear();
-        this.pos.x = this.homePos.x + rand(-10, 10);
-        this.pos.y = this.homePos.y + rand(-10, 10);
+        this.pos.x = this.homePos.x + rand(-18, 18);
+        this.pos.y = this.homePos.y + rand(-14, 14);
         this.velocity = vec2(0, 0);
-        this.zHeight = rand(210, 290);
+        this.zHeight = rand(230, 310);
         this.velZ = 0;
         this.isGrounded = false;
         this.isFallingInVoid = false;
@@ -115,8 +144,8 @@ export function createPhysicsObject(opts) {
        * thrown projectile wind streaks, and custom visual design.
        */
       draw() {
-        // When carried by the player (Phase 7) or waiting to respawn after exploding (Phase 9), skip ground draw
-        if (this.isCarried || this.isExplodedCooldown) return;
+        // Skip ground draw when carried, cooling down after explosion, or waiting in the sky queue
+        if (this.isCarried || this.isExplodedCooldown || this.isWaitingToDrop) return;
 
         const overArena = isPointOnArena(this.pos.x, this.pos.y);
 

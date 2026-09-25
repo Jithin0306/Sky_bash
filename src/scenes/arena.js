@@ -185,7 +185,8 @@ export function registerArenaScene() {
 }
 
 /**
- * Spawns a balanced assortment of 2.5D Physics Objects around the circular court:
+ * Spawns a balanced assortment of 2.5D Physics Objects around the circular court
+ * with staggered sky-drop delays so items enter the arena gradually over time!
  * - 2 Supply Crates (medium weight)
  * - 2 Brawler Spheres / Balls (weighted bounce & rolling spin)
  * - 1 Iron Heavy Box (high mass, heavy impact)
@@ -196,13 +197,13 @@ function spawnArenaPhysicsObjects() {
   const cy = ARENA_CONFIG.CENTER_Y;
 
   return [
-    createCrate(cx - 145, cy - 42, 180),
-    createCrate(cx + 145, cy + 75, 220),
-    createBall(cx - 120, cy + 90, 260),
-    createBall(cx + 160, cy - 55, 300),
-    createHeavyBox(cx, cy - 10, 240),
-    createBomb(cx - 185, cy + 18, 210),
-    createBomb(cx + 185, cy + 18, 250),
+    createCrate(cx - 145, cy - 42, 180, 0),
+    createBall(cx - 120, cy + 90, 260, 0),
+    createCrate(cx + 145, cy + 75, 220, 3.0),
+    createBomb(cx - 185, cy + 18, 210, 4.8),
+    createBall(cx + 160, cy - 55, 300, 6.2),
+    createHeavyBox(cx, cy - 10, 240, 7.8),
+    createBomb(cx + 185, cy + 18, 250, 9.2),
   ];
 }
 
@@ -913,13 +914,24 @@ function createPickupPromptRenderer(player) {
         if (player.heldObject || !player.nearestPickupCandidate) return;
 
         const target = player.nearestPickupCandidate;
-        if (!target || target.isCarried || target.isFallingInVoid) return;
+        if (
+          !target ||
+          target.isCarried ||
+          target.isFallingInVoid ||
+          target.isWaitingToDrop
+        ) {
+          return;
+        }
 
         const t = time();
         const pulse = Math.sin(t * 7) * 2.5;
         const ringRadius = (target.footprintRadius || 16) + 8 + pulse;
+        const isFighterTarget = target.objectType === "fighter";
+        const highlightColor = isFighterTarget
+          ? rgb(255, 195, 55)
+          : rgb(65, 245, 220);
 
-        // 1. Pulsing 2.5D selection ring around the base of the pickupable object
+        // 1. Pulsing 2.5D selection ring around the base of the pickupable object or fighter
         pushTransform();
         pushTranslate(target.pos.x, target.pos.y);
         pushScale(1, ARENA_CONFIG.PERSPECTIVE_Y_SCALE);
@@ -929,41 +941,44 @@ function createPickupPromptRenderer(player) {
           fill: false,
           outline: {
             width: 2.5,
-            color: rgb(65, 245, 220),
+            color: highlightColor,
             opacity: 0.85,
           },
         });
         popTransform();
 
-        // 2. Compact floating "E : GRAB" pill above the object (no square brackets!)
+        // 2. Compact floating "E : GRAB" or "E : GRAB PYRO" pill above the target (no square brackets!)
         const badgeY =
           target.pos.y -
           (target.zHeight || 0) -
           (target.propHeight || 30) -
-          20 +
+          (isFighterTarget ? 34 : 20) +
           Math.sin(t * 6) * 2;
+
+        const pillWidth = isFighterTarget ? 88 : 56;
+        const labelText = isFighterTarget ? "E : GRAB FOE" : "E : GRAB";
 
         pushTransform();
         pushTranslate(target.pos.x, badgeY);
 
         drawRect({
-          pos: vec2(-28, -10),
-          width: 56,
+          pos: vec2(-pillWidth * 0.5, -10),
+          width: pillWidth,
           height: 18,
           radius: 5,
           color: rgb(14, 22, 38),
           opacity: 0.92,
           outline: {
             width: 1.8,
-            color: rgb(65, 245, 220),
+            color: highlightColor,
           },
         });
 
         drawText({
-          text: "E : GRAB",
-          pos: vec2(-22, -5),
+          text: labelText,
+          pos: vec2(-pillWidth * 0.5 + 7, -5),
           size: 10,
-          color: rgb(125, 255, 230),
+          color: isFighterTarget ? rgb(255, 230, 110) : rgb(125, 255, 230),
         });
 
         popTransform();
@@ -973,7 +988,8 @@ function createPickupPromptRenderer(player) {
 }
 
 /**
- * Displays the Phase 10 HUD card with live VOLT vs PYRO AI Brawler telemetry.
+ * Displays the Phase 10 HUD card with live VOLT vs PYRO AI Brawler telemetry,
+ * Shift-Sprint Stamina readout, and Fighter Carry / Escape instructions.
  */
 function createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera) {
   let isZoomedIn = false;
@@ -992,8 +1008,8 @@ function createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera
         // Compact top-left HUD card
         drawRect({
           pos: vec2(14, 14),
-          width: 525,
-          height: 114,
+          width: 555,
+          height: 118,
           radius: 10,
           color: rgb(12, 16, 28),
           opacity: 0.84,
@@ -1004,30 +1020,33 @@ function createPhase10HUD(player, enemyBot, aiController, physicsObjects, camera
         });
 
         drawText({
-          text: "PHASE 10: ENEMY AI BOT OPPONENT (VOLT VS PYRO AI)",
-          pos: vec2(28, 26),
-          size: 13,
+          text: "PHASE 10: VOLT VS PYRO AI (CARRY FOES, ESCAPE GRAB & STAMINA SPRINT)",
+          pos: vec2(28, 25),
+          size: 12.5,
           color: rgb(86, 220, 255),
         });
 
         drawText({
-          text: "E : Grab  |  J / K / Click : Punch & Throw  |  T : Toggle AI  |  B : Bombs",
-          pos: vec2(28, 48),
-          size: 12,
+          text: "SHIFT : Sprint (Stamina)  |  E : Grab Item or Foe  |  SPAM SPACE/J : Escape",
+          pos: vec2(28, 47),
+          size: 11.5,
           color: rgb(210, 222, 245),
         });
 
+        const stamPct = Math.round(player.stamina ?? 100);
         drawText({
-          text: `VOLT HP: ${player.health}% (KOs: ${player.ringOutCount})   |   PYRO AI HP: ${enemyBot.health}% (KOs: ${enemyBot.ringOutCount})`,
-          pos: vec2(28, 72),
-          size: 11.5,
-          color: rgb(255, 225, 85),
+          text: `VOLT HP: ${player.health}% (STAMINA: ${stamPct}% | KOs: ${player.ringOutCount})   |   PYRO HP: ${enemyBot.health}% (KOs: ${enemyBot.ringOutCount})`,
+          pos: vec2(28, 71),
+          size: 11,
+          color: player.isStaminaExhausted
+            ? rgb(255, 115, 75)
+            : rgb(255, 225, 85),
         });
 
         drawText({
-          text: `PYRO AI BRAIN: ${enemyBot.aiStateLabel}  —  Knock Pyro off the cliff for a RING OUT!`,
-          pos: vec2(28, 94),
-          size: 12,
+          text: `PYRO AI BRAIN: ${enemyBot.aiStateLabel}  —  Grab & throw Pyro into the Void!`,
+          pos: vec2(28, 95),
+          size: 11.5,
           color: aiController.enabled ? rgb(110, 245, 165) : rgb(255, 145, 110),
         });
       },

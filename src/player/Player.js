@@ -15,6 +15,7 @@ import { updatePlayerMovement } from "./playerMovement.js";
 import {
   updatePlayerCombat,
   dropHeldObject,
+  breakFreeFromCarrier,
 } from "./playerCombat.js";
 import { isPointOnArena } from "../scenes/arena.js";
 import {
@@ -51,6 +52,7 @@ export function createPlayer(
     "player",
     "fighter",
     "punchable",
+    "pickupable",
     {
       // --- Multiplayer & AI State Properties (Section 27) ---
       playerId: options.playerId || 1,
@@ -58,6 +60,7 @@ export function createPlayer(
       isAI: Boolean(options.isAI),
       speedMultiplier: options.speedMultiplier ?? 1.0,
       aiStateLabel: "IDLE",
+      palette,
       ringColor,
       homePos: vec2(spawnX, spawnY),
       footprintRadius: PLAYER_CONFIG.FOOTPRINT_RADIUS,
@@ -77,6 +80,24 @@ export function createPlayer(
       throwAnimTimer: 0,
       animTimer: 0,
       cameraRef: options.camera || null,
+
+      // --- Fighter Carry & Escape Struggle Properties ---
+      objectType: "fighter",
+      mass: COMBAT_CONFIG.FIGHTER_CARRY_MASS,
+      throwForce: COMBAT_CONFIG.FIGHTER_THROW_FORCE,
+      isCarried: false,
+      carrier: null,
+      struggleProgress: 0,
+      grabImmunityTimer: 0,
+      isThrownProjectile: false,
+      thrower: null,
+
+      // --- Shift Sprint & Stamina System ---
+      stamina: PLAYER_CONFIG.MAX_STAMINA,
+      maxStamina: PLAYER_CONFIG.MAX_STAMINA,
+      staminaRegenDelayTimer: 0,
+      isStaminaExhausted: false,
+      isSprinting: false,
 
       // --- Phase 3: 2.5D Vertical Jump & Ground State ---
       zHeight: 0,           // Height in pixels above (>0) or below (<0) the arena floor
@@ -101,6 +122,7 @@ export function createPlayer(
         moveX: 0,
         moveY: 0,
         isMoving: false,
+        sprintHeld: false,
         jumpPressed: false,
         punchPressed: false,
         pickupPressed: false,
@@ -119,9 +141,9 @@ export function createPlayer(
        * Phase 10: Triggered when another fighter's melee punch lands on this character!
        */
       onPunchHit(dir, force) {
-        if (this.isFallingInVoid) return;
+        if (this.isFallingInVoid || this.isCarried) return;
 
-        // If carrying an object overhead, a direct punch knocks it loose!
+        // If carrying an object or another fighter overhead, a direct punch knocks them loose!
         if (this.heldObject) {
           dropHeldObject(this);
         }
@@ -149,6 +171,59 @@ export function createPlayer(
         if (this.hitFlashTimer > 0) {
           this.hitFlashTimer = Math.max(0, this.hitFlashTimer - delta);
         }
+        if (this.grabImmunityTimer > 0) {
+          this.grabImmunityTimer = Math.max(0, this.grabImmunityTimer - delta);
+        }
+
+        // --- CARRIED OVERHEAD STATE (Spam keys to break free out of the carrier's hands!) ---
+        if (this.isCarried && this.carrier) {
+          if (this.carrier.isFallingInVoid) {
+            dropHeldObject(this.carrier);
+            return;
+          }
+
+          this.pos.x = this.carrier.pos.x;
+          this.pos.y = this.carrier.pos.y;
+          this.zHeight = this.carrier.zHeight + 56;
+          this.velZ = 0;
+          this.isGrounded = false;
+          this.animTimer += delta * 18; // Fast kicking legs while carried!
+
+          // Recover stamina while being carried
+          this.stamina = Math.min(
+            this.maxStamina,
+            this.stamina + PLAYER_CONFIG.STAMINA_REGEN_RATE * delta
+          );
+
+          if (this.isAI) {
+            // AI bot steadily struggles to break free (~2.9s to escape if carrier holds too long)
+            this.struggleProgress += COMBAT_CONFIG.AI_STRUGGLE_RATE * delta;
+          } else {
+            // Human player: base struggle + rapid key-spam boost (Space / J / E / K)
+            this.struggleProgress += 7 * delta;
+            if (
+              this.input.jumpPressed ||
+              this.input.punchPressed ||
+              this.input.pickupPressed ||
+              this.input.throwPressed
+            ) {
+              this.struggleProgress += COMBAT_CONFIG.STRUGGLE_PER_TAP;
+            }
+          }
+
+          if (this.struggleProgress >= 100) {
+            breakFreeFromCarrier(this);
+          }
+
+          updateDepthSort(this);
+          return;
+        }
+
+        // Clear thrown projectile flag once landed
+        if (this.isGrounded && this.isThrownProjectile) {
+          this.isThrownProjectile = false;
+          this.thrower = null;
+        }
 
         // Update combat first (checks punch input, active hitbox, and hit-stop)
         updatePlayerCombat(this, delta, this.cameraRef);
@@ -169,7 +244,9 @@ export function createPlayer(
        * KAPLAY runs draw() automatically every frame to render the character.
        */
       draw() {
-        drawCharacterVisuals(this, palette);
+        // When carried overhead, the carrier's drawCarriedObjectVisuals() renders this fighter!
+        if (this.isCarried) return;
+        drawCharacterVisuals(this, palette, false);
       },
     },
   ]);
@@ -245,31 +322,34 @@ function drawSingleLeg(hipPos, footPos, kneeBendX, C) {
 }
 
 /**
- * Renders the stylized 2.5D character ("Volt") relative to the player's
- * ground footprint position (0, 0).
+ * Renders the stylized 2.5D character ("Volt" or "Pyro") relative to the player's
+ * ground footprint position (0, 0) or overhead inside a carrier's raised hands.
  */
-function drawCharacterVisuals(player, C) {
-  const isCarrying = Boolean(player.heldObject);
+function drawCharacterVisuals(player, C, isRenderedOverhead = false) {
+  const isCarrying = Boolean(player.heldObject) && !isRenderedOverhead;
   const isRunning =
     player.state === "run" || (isCarrying && player.input.isMoving);
   const isJumping = player.state === "jump";
   const isFalling = player.state === "fall";
   const isAirborne = !player.isGrounded;
-  const isPanicFall = player.isFallingInVoid; // True when falling off the cliff!
+  // When falling off the cliff OR being carried overhead, kick legs & flail!
+  const isPanicFall = player.isFallingInVoid || isRenderedOverhead;
   const t = player.animTimer;
 
   // --------------------------------------------------------------------------
-  // A. 2.5D GROUND SHADOW & PLAYER RING (via reusable depthSort.js system!)
+  // A. 2.5D GROUND SHADOW & PLAYER RING (skip when rendered overhead in hands)
   // --------------------------------------------------------------------------
-  const overArena = isPointOnArena(player.pos.x, player.pos.y);
+  if (!isRenderedOverhead) {
+    const overArena = isPointOnArena(player.pos.x, player.pos.y);
 
-  drawGroundShadow({
-    radius: PLAYER_CONFIG.FOOTPRINT_RADIUS,
-    zHeight: player.zHeight,
-    overArena,
-    isFallingInVoid: isPanicFall,
-    ringColor: player.ringColor || [25, 145, 215],
-  });
+    drawGroundShadow({
+      radius: PLAYER_CONFIG.FOOTPRINT_RADIUS,
+      zHeight: player.zHeight,
+      overArena,
+      isFallingInVoid: player.isFallingInVoid,
+      ringColor: player.ringColor || [25, 145, 215],
+    });
+  }
 
   // --------------------------------------------------------------------------
   // B. VERTICAL BODY SHIFT + 2.5D PERSPECTIVE DEPTH SCALING
@@ -281,8 +361,8 @@ function drawCharacterVisuals(player, C) {
     ? 0
     : -Math.sin(t) * 1.5;
 
-  // When falling off the cliff, force Volt to face the camera so you can see
-  // his hilarious panicked expression, flailing arms, and pedaling legs!
+  // When falling off the cliff or carried overhead, face the camera so you can see
+  // the panicked expression, flailing arms, and pedaling legs!
   const lookX = isPanicFall ? Math.sin(t * 6) * 0.35 : player.facing.x;
   const lookY = isPanicFall ? 1.0 : player.facing.y;
   const perpX = -lookY;
@@ -290,18 +370,24 @@ function drawCharacterVisuals(player, C) {
 
   // Combine 2.5D depth perspective scale (0.92x at North rim .. 1.08x at South rim)
   // with the abyss shrink scale when falling off the cliff!
-  const depthPerspectiveScale = computeDepthScale(player.pos.y);
-  const abyssScale = isPanicFall
+  const depthPerspectiveScale = isRenderedOverhead
+    ? 0.88
+    : computeDepthScale(player.pos.y);
+  const abyssScale = player.isFallingInVoid
     ? clamp(1 + player.zHeight / 640, 0.35, 1.0)
     : 1.0;
   const totalScale = depthPerspectiveScale * abyssScale;
 
-  // Wild cartoon wobble tilt when falling off the cliff!
-  const panicTiltDeg = isPanicFall ? Math.sin(t * 4.2) * 26 : 0;
+  // Wild cartoon wobble tilt when falling off the cliff or squirming in a grab!
+  const panicTiltDeg = isRenderedOverhead
+    ? Math.sin(t * 5.5) * 18
+    : player.isFallingInVoid
+    ? Math.sin(t * 4.2) * 26
+    : 0;
 
   pushTransform();
-  pushTranslate(0, -player.zHeight);
-  // Rotate & scale around Volt's waist (-28px)
+  pushTranslate(0, isRenderedOverhead ? 6 : -player.zHeight);
+  // Rotate & scale around fighter's waist (-28px)
   pushTranslate(0, -28);
   pushRotate(panicTiltDeg);
   pushScale(totalScale, totalScale);
@@ -422,7 +508,10 @@ function drawCharacterVisuals(player, C) {
     // Phase 7: Both Golden Gloves raised overhead to support the carried object!
     const handY = lerp(-30, -64, hoistProgress) + runBob + squashOffsetY;
     const gripWidth =
-      player.heldObject.objectType === "heavyBox" ? 19 : 16;
+      player.heldObject.objectType === "heavyBox" ||
+      player.heldObject.objectType === "fighter"
+        ? 19
+        : 16;
 
     leftHandPos = vec2(-gripWidth + lookX * 2, handY);
     rightHandPos = vec2(gripWidth + lookX * 2, handY);
@@ -597,7 +686,7 @@ function drawCharacterVisuals(player, C) {
   }
 
   // --------------------------------------------------------------------------
-  // H. MILESTONE 7: OVERHEAD CARRIED OBJECT (Held between Volt's raised gloves!)
+  // H. PHASE 7 & 10: OVERHEAD CARRIED OBJECT OR CARRIED FIGHTER!
   // --------------------------------------------------------------------------
   if (isCarrying && player.heldObject) {
     const carriedY = lerp(-26, -63, hoistProgress) + runBob + squashOffsetY;
@@ -626,9 +715,43 @@ function drawCharacterVisuals(player, C) {
   }
 
   // --------------------------------------------------------------------------
-  // I. COMIC PANIC SWEAT DROPS & "AAAH!!" CALLOUT WHEN FALLING OFF THE CLIFF
+  // J. OVERHEAD CALLOUTS: ESCAPE STRUGGLE METER, PANIC "AAAH!!", OR HP + STAMINA
   // --------------------------------------------------------------------------
-  if (isPanicFall) {
+  if (isRenderedOverhead) {
+    // Carried Fighter Escape Struggle Meter (NO square brackets in drawText!)
+    const escRatio = clamp((player.struggleProgress || 0) / 100, 0, 1);
+    drawRect({
+      pos: vec2(-46, -98),
+      width: 92,
+      height: 24,
+      radius: 6,
+      color: rgb(14, 18, 32),
+      opacity: 0.94,
+      outline: { width: 2, color: rgb(255, 215, 55) },
+    });
+    drawText({
+      text: player.isAI ? "STRUGGLING!" : "SPAM SPACE / J!",
+      pos: vec2(-39, -94),
+      size: 9.5,
+      color: rgb(255, 235, 95),
+    });
+    drawRect({
+      pos: vec2(-40, -81),
+      width: 80,
+      height: 4.5,
+      radius: 2,
+      color: rgb(32, 38, 56),
+    });
+    if (escRatio > 0) {
+      drawRect({
+        pos: vec2(-40, -81),
+        width: Math.max(3, 80 * escRatio),
+        height: 4.5,
+        radius: 2,
+        color: rgb(110, 255, 130),
+      });
+    }
+  } else if (player.isFallingInVoid) {
     // Flying sweat droplets shooting upward off the helmet
     const dropOffset = (t * 28) % 16;
     drawCircle({
@@ -659,15 +782,15 @@ function drawCharacterVisuals(player, C) {
     });
   } else {
     // ------------------------------------------------------------------------
-    // J. PHASE 10: COMPACT OVERHEAD FIGHTER TAG & MINI HEALTH BAR
+    // COMPACT OVERHEAD FIGHTER TAG, MINI HEALTH BAR, & STAMINA SPRINT BAR
     // ------------------------------------------------------------------------
-    const tagBaseY = isCarrying ? -110 : -79;
+    const tagBaseY = isCarrying ? -124 : -83;
     const hpRatio = clamp((player.health || 0) / (player.maxHealth || 100), 0, 1);
     const barColor = player.isAI
       ? rgb(245, 78, 68)
       : rgb(55, 225, 210);
 
-    // Mini dark bar background
+    // 1. Mini dark HP bar background
     drawRect({
       pos: vec2(-20, tagBaseY),
       width: 40,
@@ -688,6 +811,37 @@ function drawCharacterVisuals(player, C) {
       });
     }
 
+    // 2. Mini Stamina Bar right beneath the HP Bar (for Shift Sprint!)
+    const stamRatio = clamp(
+      (player.stamina ?? 100) / (player.maxStamina || 100),
+      0,
+      1
+    );
+    const stamColor = player.isStaminaExhausted
+      ? rgb(255, 95, 55)
+      : player.isSprinting
+      ? rgb(155, 255, 90)
+      : rgb(255, 215, 75);
+
+    drawRect({
+      pos: vec2(-20, tagBaseY + 6.5),
+      width: 40,
+      height: 4,
+      radius: 1.5,
+      color: rgb(14, 18, 30),
+      outline: { width: 1, color: rgb(38, 48, 72) },
+    });
+
+    if (stamRatio > 0) {
+      drawRect({
+        pos: vec2(-19, tagBaseY + 7.5),
+        width: Math.max(1.5, 38 * stamRatio),
+        height: 2,
+        radius: 1,
+        color: stamColor,
+      });
+    }
+
     // Fighter name label ("VOLT" or "PYRO")
     drawText({
       text: player.displayName || "VOLT",
@@ -701,8 +855,8 @@ function drawCharacterVisuals(player, C) {
 }
 
 /**
- * Renders the currently carried physics object (Crate, Ball, Heavy Box, or Bomb)
- * centered between Volt's raised boxing gloves during a hoist/carry!
+ * Renders the currently carried physics object (Crate, Ball, Heavy Box, Bomb, or Fighter!)
+ * centered between the carrier's raised boxing gloves during a hoist/carry!
  */
 function drawCarriedObjectVisuals(heldObj) {
   if (!heldObj) return;
@@ -718,6 +872,12 @@ function drawCarriedObjectVisuals(heldObj) {
       heldObj.isLit,
       heldObj.fuseTimer,
       heldObj.fuseDuration
+    );
+  } else if (heldObj.objectType === "fighter") {
+    drawCharacterVisuals(
+      heldObj,
+      heldObj.palette || PLAYER_CONFIG.COLORS,
+      true
     );
   }
 }

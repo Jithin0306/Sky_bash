@@ -27,6 +27,12 @@ function moveToward(current, target, maxDelta) {
  * into the abyss (Milestone 13 will hook this into the Round Over system).
  */
 export function respawnPlayer(player) {
+  if (player.carrier && player.carrier.heldObject === player) {
+    player.carrier.heldObject = null;
+  }
+  player.carrier = null;
+  player.isCarried = false;
+  player.struggleProgress = 0;
   player.pos.x = player.homePos ? player.homePos.x : ARENA_CONFIG.CENTER_X;
   player.pos.y = player.homePos ? player.homePos.y : ARENA_CONFIG.CENTER_Y;
   player.velocity = vec2(0, 0);
@@ -37,6 +43,8 @@ export function respawnPlayer(player) {
   player.isFallingInVoid = false;
   player.hasTriggeredRingOutBanner = false;
   player.health = player.maxHealth || 100;
+  player.stamina = player.maxStamina || PLAYER_CONFIG.MAX_STAMINA;
+  player.isStaminaExhausted = false;
   player.state = "fall";
 }
 
@@ -56,14 +64,56 @@ export function updatePlayerMovement(player, delta) {
   player.landImpactSpeed = 0;
 
   // --------------------------------------------------------------------------
-  // 1. HORIZONTAL FLOOR MOVEMENT (X, Y) WITH AIR CONTROL & CARRY WEIGHT
+  // 1. HORIZONTAL FLOOR MOVEMENT (X, Y) WITH STAMINA SPRINT & CARRY WEIGHT
   // --------------------------------------------------------------------------
-  // Milestone 7: Heavier carried objects slightly reduce top movement speed!
-  const carryMass = player.heldObject ? player.heldObject.mass : 0;
+  // Step Stamina drain (when holding Shift + moving) & regeneration
+  if (player.maxStamina === undefined) {
+    player.maxStamina = PLAYER_CONFIG.MAX_STAMINA;
+    player.stamina = PLAYER_CONFIG.MAX_STAMINA;
+    player.isStaminaExhausted = false;
+    player.staminaRegenDelay = 0;
+  }
+
+  const wantsToSprint = Boolean(input.sprintHeld && input.isMoving && player.isGrounded);
+  const canSprint = !player.isStaminaExhausted && player.stamina > 0;
+  player.isSprinting = wantsToSprint && canSprint;
+
+  if (player.isSprinting) {
+    player.stamina = Math.max(
+      0,
+      player.stamina - PLAYER_CONFIG.STAMINA_DRAIN_RATE * delta
+    );
+    player.staminaRegenDelay = PLAYER_CONFIG.STAMINA_REGEN_DELAY;
+    if (player.stamina <= 0) {
+      player.isStaminaExhausted = true;
+      player.isSprinting = false;
+    }
+  } else {
+    if (player.staminaRegenDelay > 0) {
+      player.staminaRegenDelay = Math.max(0, player.staminaRegenDelay - delta);
+    } else {
+      player.stamina = Math.min(
+        player.maxStamina,
+        player.stamina + PLAYER_CONFIG.STAMINA_REGEN_RATE * delta
+      );
+      if (
+        player.isStaminaExhausted &&
+        player.stamina >= PLAYER_CONFIG.STAMINA_EXHAUST_RECOVERY
+      ) {
+        player.isStaminaExhausted = false;
+      }
+    }
+  }
+
+  // Select base speed: 285 when Shift-sprinting with stamina, or 195 normal walking speed!
+  const baseMoveSpeed = player.isSprinting
+    ? PLAYER_CONFIG.PLAYER_SPRINT_SPEED
+    : PLAYER_CONFIG.PLAYER_SPEED;
+
+  const carryMass = player.heldObject ? player.heldObject.mass || 1.0 : 0;
   const carrySpeedMult = 1 / (1 + carryMass * COMBAT_CONFIG.CARRY_MASS_SLOWDOWN);
   const fighterSpeedMult = player.speedMultiplier || 1.0;
-  const effectiveSpeed =
-    PLAYER_CONFIG.PLAYER_SPEED * carrySpeedMult * fighterSpeedMult;
+  const effectiveSpeed = baseMoveSpeed * carrySpeedMult * fighterSpeedMult;
 
   const targetVelX = input.moveX * effectiveSpeed;
   const targetVelY =

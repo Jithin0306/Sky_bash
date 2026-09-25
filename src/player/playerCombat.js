@@ -124,7 +124,7 @@ export function updatePlayerCombat(player, delta, camera = null) {
  * within `COMBAT_CONFIG.PICKUP_RANGE` (58 px), or `null` if none is in reach.
  */
 export function findNearestPickupCandidate(player) {
-  if (player.isFallingInVoid) return null;
+  if (player.isFallingInVoid || player.isCarried) return null;
 
   const candidates = get("pickupable");
   let bestObj = null;
@@ -136,7 +136,16 @@ export function findNearestPickupCandidate(player) {
     player.pos.y + player.facing.y * 12 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
 
   for (const obj of candidates) {
-    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown) continue;
+    if (
+      obj === player ||
+      obj.isCarried ||
+      obj.isFallingInVoid ||
+      obj.isExplodedCooldown ||
+      obj.isWaitingToDrop ||
+      (obj.grabImmunityTimer && obj.grabImmunityTimer > 0)
+    ) {
+      continue;
+    }
 
     // Must be within reachable vertical height
     if (Math.abs((obj.zHeight || 0) - player.zHeight) > 48) continue;
@@ -155,25 +164,36 @@ export function findNearestPickupCandidate(player) {
 }
 
 /**
- * Picks up the target physics object and attaches it to the player's hands.
+ * Picks up the target physics object OR opponent Fighter and hoists them overhead!
  */
 export function pickupObject(player, obj) {
+  if (!obj || obj === player || obj.isCarried || player.heldObject) return;
+
+  // If the target is another fighter who was carrying an item, make them drop their item first!
+  if (obj.objectType === "fighter" && obj.heldObject) {
+    dropHeldObject(obj);
+  }
+
   // Cancel any active punch swing
   player.isPunching = false;
   player.punchTimer = 0;
 
-  // Attach object to player
+  // Attach object/fighter to player
   player.heldObject = obj;
   player.nearestPickupCandidate = null;
   player.pickupAnimTimer = COMBAT_CONFIG.PICKUP_ANIM_DURATION;
   player.landingSquash = 0.45; // Subtle knee bend as Volt hoists the weight!
 
-  // Disable normal ground physics on the object while carried
+  // Disable normal ground physics on the object/fighter while carried
   obj.isCarried = true;
   obj.carrier = player;
   obj.velocity = vec2(0, 0);
+  if (obj.knockback) obj.knockback = vec2(0, 0);
   obj.velZ = 0;
   obj.isGrounded = false;
+  if (obj.objectType === "fighter") {
+    obj.struggleProgress = 0;
+  }
 
   // Phase 9: Picking up a Bomb automatically ignites its 3.5s fuse!
   if (typeof obj.ignite === "function") {
@@ -181,11 +201,58 @@ export function pickupObject(player, obj) {
   }
 
   // Spawn a snappy cyan/gold pickup ring VFX
-  spawnPickupVFX(player.pos.x, player.pos.y, player.zHeight + 24, "GRAB!");
+  const grabLabel = obj.objectType === "fighter" ? "GRABBED!" : "GRAB!";
+  spawnPickupVFX(player.pos.x, player.pos.y, player.zHeight + 24, grabLabel);
 }
 
 /**
- * Gently drops the currently carried object in front of the player
+ * Called when a carried fighter spams Space/J/E (or AI squirms) to 100% and breaks free!
+ */
+export function breakFreeFromCarrier(carriedFighter) {
+  const carrier = carriedFighter.carrier;
+  if (!carrier) return;
+
+  carrier.heldObject = null;
+  carrier.pickupAnimTimer = 0;
+
+  carriedFighter.isCarried = false;
+  carriedFighter.carrier = null;
+  carriedFighter.struggleProgress = 0;
+  carriedFighter.grabImmunityTimer = 1.6; // 1.6s immunity so they cannot be instantly re-grabbed!
+
+  // Place the escaped fighter safely in front of the carrier and hop upward
+  const escapeDirX = carrier.facing.x || 0;
+  const escapeDirY = carrier.facing.y || 1;
+  carriedFighter.pos.x = carrier.pos.x + escapeDirX * 36;
+  carriedFighter.pos.y =
+    carrier.pos.y + escapeDirY * 36 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+  carriedFighter.zHeight = Math.max(12, carrier.zHeight + 24);
+  carriedFighter.velZ = 215;
+  carriedFighter.isGrounded = false;
+  carriedFighter.knockback = vec2(
+    escapeDirX * 190,
+    escapeDirY * 190 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+  );
+
+  // Shove the carrier backward in recoil!
+  carrier.knockback = vec2(
+    -escapeDirX * 230,
+    -escapeDirY * 230 * ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+  );
+  carrier.velZ = 135;
+  carrier.isGrounded = false;
+  carrier.hitFlashTimer = 0.16;
+
+  spawnPickupVFX(
+    carriedFighter.pos.x,
+    carriedFighter.pos.y,
+    carriedFighter.zHeight + 20,
+    "ESCAPED!"
+  );
+}
+
+/**
+ * Gently drops the currently carried object or fighter in front of the player
  * and restores its normal 2.5D physics.
  */
 export function dropHeldObject(player) {
@@ -199,7 +266,7 @@ export function dropHeldObject(player) {
   obj.carrier = null;
 
   // Place the object ~30px in front of the player's facing direction
-  const dropDist = PLAYER_CONFIG.FOOTPRINT_RADIUS + obj.footprintRadius + 4;
+  const dropDist = PLAYER_CONFIG.FOOTPRINT_RADIUS + (obj.footprintRadius || 18) + 6;
   obj.pos.x = player.pos.x + player.facing.x * dropDist;
   obj.pos.y =
     player.pos.y +
@@ -210,20 +277,27 @@ export function dropHeldObject(player) {
   obj.velZ = 115;
   obj.isGrounded = false;
 
-  const forwardSpeed = COMBAT_CONFIG.DROP_FORWARD_SPEED / Math.sqrt(obj.mass);
-  obj.velocity.x =
-    player.velocity.x * 0.4 + player.facing.x * forwardSpeed;
-  obj.velocity.y =
+  const forwardSpeed =
+    COMBAT_CONFIG.DROP_FORWARD_SPEED / Math.sqrt(obj.mass || 1.0);
+  const vx = player.velocity.x * 0.4 + player.facing.x * forwardSpeed;
+  const vy =
     player.velocity.y * 0.4 +
     player.facing.y * forwardSpeed * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+
+  if (obj.objectType === "fighter") {
+    obj.struggleProgress = 0;
+    obj.grabImmunityTimer = 0.9;
+    obj.knockback = vec2(vx * 1.4, vy * 1.4);
+  } else {
+    obj.velocity = vec2(vx, vy);
+  }
 
   spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "DROP");
 }
 
 /**
  * Computes the exact 2.5D initial launch position and velocity vector (`vx`, `vy`, `velZ`)
- * when Volt throws the currently held object. Used both by `throwHeldObject()` and by
- * the live 2.5D trajectory arc preview in `arena.js`!
+ * when Volt throws the currently held object or fighter.
  */
 export function computeThrowLaunchState(player, obj) {
   const launchDist = PLAYER_CONFIG.FOOTPRINT_RADIUS + (obj.footprintRadius || 18) + 6;
@@ -233,7 +307,7 @@ export function computeThrowLaunchState(player, obj) {
     player.facing.y * launchDist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
   const startZ = Math.max(24, player.zHeight + 48);
 
-  const throwForce = obj.throwForce || 520;
+  const throwForce = obj.throwForce || 260;
   const momentumMult = COMBAT_CONFIG.THROW_PLAYER_MOMENTUM_FACTOR;
 
   const vx =
@@ -249,8 +323,8 @@ export function computeThrowLaunchState(player, obj) {
 }
 
 /**
- * Phase 8: Hurls the currently carried object along a high-speed 2.5D arc in the
- * direction Volt is facing!
+ * Phase 8: Hurls the currently carried object OR opponent Fighter along a 2.5D arc
+ * in the direction Volt is facing (great for throwing rivals into the Void!).
  */
 export function throwHeldObject(player, camera = null) {
   const obj = player.heldObject;
@@ -258,28 +332,38 @@ export function throwHeldObject(player, camera = null) {
 
   const launch = computeThrowLaunchState(player, obj);
 
-  // Release object from Volt's hands
+  // Release object/fighter from Volt's hands
   player.heldObject = null;
   player.pickupAnimTimer = 0;
   player.throwAnimTimer = COMBAT_CONFIG.THROW_ANIM_DURATION;
-  player.punchCooldownTimer = 0.24; // Prevent accidental immediate punch on same click
+  player.punchCooldownTimer = 0.24;
   player.landingSquash = 0.35;
   player.state = "throw";
 
-  // Configure thrown projectile physics state
   obj.isCarried = false;
   obj.carrier = null;
-  obj.isThrownProjectile = true;
-  obj.thrower = player;
-  obj.throwHitSet.clear();
-
   obj.pos.x = launch.startX;
   obj.pos.y = launch.startY;
   obj.zHeight = launch.startZ;
-  obj.velocity = vec2(launch.vx, launch.vy);
-  obj.velZ = launch.velZ;
   obj.isGrounded = false;
-  obj.squashFactor = -0.25; // Slight forward stretch as it launches!
+
+  if (obj.objectType === "fighter") {
+    // Throwing an opponent Fighter! Launch them via knockback + velZ so they soar toward the cliff/void!
+    obj.struggleProgress = 0;
+    obj.grabImmunityTimer = 1.0;
+    obj.knockback = vec2(launch.vx * 1.45, launch.vy * 1.45);
+    obj.velocity = vec2(launch.vx * 0.45, launch.vy * 0.45);
+    obj.velZ = launch.velZ * 1.35;
+    obj.hitFlashTimer = 0.18;
+  } else {
+    // Throwing a Physics Object (Crate, Ball, Heavy Box, Bomb)
+    obj.isThrownProjectile = true;
+    obj.thrower = player;
+    obj.throwHitSet.clear();
+    obj.velocity = vec2(launch.vx, launch.vy);
+    obj.velZ = launch.velZ;
+    obj.squashFactor = -0.25;
+  }
 
   spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "YEET!");
 }

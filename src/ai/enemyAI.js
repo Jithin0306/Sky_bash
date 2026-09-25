@@ -44,6 +44,7 @@ export const PYRO_BOT_PALETTE = {
 export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
   let strafePhase = rand(0, Math.PI * 2);
   let actionCooldown = 0.35;
+  let fighterGrabCooldown = 5.5;
   let holdTimer = 0;
 
   return {
@@ -57,6 +58,7 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
         moveX: 0,
         moveY: 0,
         isMoving: false,
+        sprintHeld: false,
         jumpPressed: false,
         punchPressed: false,
         pickupPressed: false,
@@ -74,8 +76,14 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
         return emptyInput;
       }
 
+      if (bot.isCarried) {
+        bot.aiStateLabel = "GRABBED! STRUGGLING!";
+        return emptyInput;
+      }
+
       strafePhase += delta * 2.6;
       actionCooldown = Math.max(0, actionCooldown - delta);
+      fighterGrabCooldown = Math.max(0, fighterGrabCooldown - delta);
 
       if (bot.heldObject) {
         holdTimer += delta;
@@ -119,7 +127,8 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
           obj.isLit &&
           !obj.isCarried &&
           !obj.isExplodedCooldown &&
-          !obj.isFallingInVoid
+          !obj.isFallingInVoid &&
+          !obj.isWaitingToDrop
         ) {
           const bdx = bot.pos.x - obj.pos.x;
           const bdy =
@@ -167,9 +176,45 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       const dirToPlayerY = toPlayerY / distToPlayer;
 
       // ----------------------------------------------------------------------
-      // PRIORITY 3: AIM & THROW WHEN CARRYING AN OBJECT OR LIVE BOMB
+      // PRIORITY 3: AIM & THROW WHEN CARRYING AN OBJECT, BOMB, OR FIGHTER!
       // ----------------------------------------------------------------------
       if (bot.heldObject) {
+        // Special case: Pyro is carrying VOLT overhead! March toward the nearest cliff edge and throw him into the Void!
+        if (bot.heldObject.objectType === "fighter") {
+          bot.aiStateLabel = "THROW VOLT TO VOID!";
+          const outX = bot.pos.x - ARENA_CONFIG.CENTER_X;
+          const outY =
+            (bot.pos.y - ARENA_CONFIG.CENTER_Y) /
+            ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+          const outLen = Math.hypot(outX, outY) || 1;
+          const rimDirX = outLen > 5 ? outX / outLen : 1;
+          const rimDirY = outLen > 5 ? outY / outLen : 0;
+
+          if (
+            (distFromCenter >= ARENA_CONFIG.RADIUS * 0.64 && holdTimer > 0.75) ||
+            holdTimer > 2.1
+          ) {
+            bot.facing.x = rimDirX;
+            bot.facing.y = rimDirY;
+            actionCooldown = 0.75;
+            fighterGrabCooldown = 8.5;
+            return {
+              ...emptyInput,
+              moveX: rimDirX,
+              moveY: rimDirY,
+              isMoving: true,
+              throwPressed: true,
+            };
+          }
+
+          return {
+            ...emptyInput,
+            moveX: rimDirX,
+            moveY: rimDirY,
+            isMoving: true,
+          };
+        }
+
         bot.aiStateLabel = `AIM ${bot.heldObject.objectType.toUpperCase()}`;
 
         const isHoldingBomb = bot.heldObject.objectType === "bomb";
@@ -185,7 +230,6 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
         let moveY = dirToPlayerY;
 
         if (distToPlayer < 115 && !bombUrgent) {
-          // Back up slightly to line up the throw arc while still turning toward Volt
           moveX = dirToPlayerX;
           moveY = dirToPlayerY;
         }
@@ -230,6 +274,7 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
             obj.isCarried ||
             obj.isFallingInVoid ||
             obj.isExplodedCooldown ||
+            obj.isWaitingToDrop ||
             obj.isThrownProjectile
           ) {
             continue;
@@ -280,7 +325,7 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       }
 
       // ----------------------------------------------------------------------
-      // PRIORITY 5: PACE & BRAWL (Relaxed arcade movement + 0.85s punch cooldown)
+      // PRIORITY 5: PACE & BRAWL (Relaxed arcade movement + occasional Fighter Grab!)
       // ----------------------------------------------------------------------
       bot.aiStateLabel = distToPlayer <= 68 ? "MELEE BRAWL!" : "PATROL & CHASE";
 
@@ -302,13 +347,27 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
       chaseX /= chaseLen;
       chaseY /= chaseLen;
 
-      const shouldPunch =
+      const inMeleeRange =
         distToPlayer <= 56 &&
         actionCooldown <= 0 &&
         !targetPlayer.isFallingInVoid &&
+        !targetPlayer.isCarried &&
         Math.abs((targetPlayer.zHeight || 0) - bot.zHeight) < 38;
 
-      if (shouldPunch) {
+      const shouldGrabPlayer =
+        inMeleeRange &&
+        fighterGrabCooldown <= 0 &&
+        bot.nearestPickupCandidate === targetPlayer &&
+        (targetPlayer.grabImmunityTimer || 0) <= 0;
+
+      const shouldPunch = inMeleeRange && !shouldGrabPlayer;
+
+      if (shouldGrabPlayer) {
+        bot.facing.x = dirToPlayerX;
+        bot.facing.y = dirToPlayerY;
+        actionCooldown = 0.65;
+        fighterGrabCooldown = 8.5;
+      } else if (shouldPunch) {
         bot.facing.x = dirToPlayerX;
         bot.facing.y = dirToPlayerY;
         actionCooldown = 0.88; // Generous pause after each punch!
@@ -319,6 +378,7 @@ export function createEnemyAIController(bot, targetPlayer, physicsObjects) {
         moveX: chaseX,
         moveY: chaseY,
         isMoving: distToPlayer > 52,
+        pickupPressed: shouldGrabPlayer,
         punchPressed: shouldPunch,
       };
     },

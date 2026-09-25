@@ -30,18 +30,27 @@ export const CONTROLS_CONFIG = {
   PICKUP: ["e"],
   THROW: ["k"],          // Plus Right Mouse Button
   DROP: ["q"],
+  SPRINT: ["shift"],     // Hold Shift while moving to Sprint (uses Stamina!)
 };
 
 // ----------------------------------------------------------------------------
 // PLAYER MOVEMENT & CHARACTER CONFIGURATION (Section 6)
 // ----------------------------------------------------------------------------
 export const PLAYER_CONFIG = {
-  // Maximum running speed on the horizontal axis (in pixels per second).
-  // Try increasing to 340 for a faster arcade feel, or 220 for heavier brawling.
-  PLAYER_SPEED: 280,
+  // Normal controlled walking speed (in pixels per second)
+  PLAYER_SPEED: 195,
+
+  // Fast sprint speed when holding SHIFT while moving (consumes Stamina!)
+  PLAYER_SPRINT_SPEED: 285,
+
+  // --- Stamina System Configuration ---
+  MAX_STAMINA: 100,
+  STAMINA_DRAIN_RATE: 36,       // Stamina drained per second while holding Shift + moving
+  STAMINA_REGEN_RATE: 24,       // Stamina recovered per second when not sprinting
+  STAMINA_REGEN_DELAY: 0.45,    // Seconds before stamina starts refilling after sprinting
+  STAMINA_EXHAUST_RECOVERY: 26, // If stamina hits 0, must recharge to 26% before sprinting again
 
   // Controls how strongly the player accelerates toward top speed.
-  // Increase this value for snappier movement response.
   PLAYER_ACCELERATION: 1800,
 
   // Controls how quickly the player slows down when movement keys are released.
@@ -236,6 +245,12 @@ export const COMBAT_CONFIG = {
 
   // Duration of Volt's two-handed overhead throw follow-through animation (in seconds)
   THROW_ANIM_DURATION: 0.22,
+
+  // --- Fighter Carry & Struggle Escape Configuration ---
+  FIGHTER_CARRY_MASS: 1.55,      // Weight of carrying another player overhead
+  FIGHTER_THROW_FORCE: 295,      // Launch speed when hurling a carried player toward the void!
+  STRUGGLE_PER_TAP: 22,          // Escape % gained per key tap (Space / J / E) when grabbed
+  AI_STRUGGLE_RATE: 34,          // Escape % per second for a carried AI fighter (~3s max hold)
 };
 
 // ----------------------------------------------------------------------------
@@ -247,6 +262,10 @@ export const COMBAT_CONFIG = {
 // ----------------------------------------------------------------------------
 export const OBJECTS_CONFIG = {
   GRAVITY: 1120,
+
+  // Slower item drop rate: wait 5.5s to 9.5s before dropping a fresh item from the sky!
+  SKY_RESPAWN_DELAY_MIN: 5.5,
+  SKY_RESPAWN_DELAY_MAX: 9.5,
 
   CRATE: {
     type: "crate",

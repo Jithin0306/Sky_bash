@@ -12,7 +12,7 @@ import { createPhysicsObject } from "./GameObject.js";
 /**
  * Spawns a 2.5D Supply Crate at (x, y).
  */
-export function createCrate(x, y, startZ = 200) {
+export function createCrate(x, y, startZ = 200, initialDropDelay = 0) {
   const cfg = OBJECTS_CONFIG.CRATE;
 
   return createPhysicsObject({
@@ -20,6 +20,7 @@ export function createCrate(x, y, startZ = 200) {
     x,
     y,
     startZ,
+    initialDropDelay,
     renderVisuals(obj, isFlashing) {
       drawCrateVisuals(isFlashing);
     },

@@ -68,6 +68,7 @@ export function readLocalPlayerInput() {
     moveX,
     moveY,
     isMoving: length > 0,
+    sprintHeld: isAnyKeyDown(CONTROLS_CONFIG.SPRINT),
     jumpPressed: isAnyKeyPressed(CONTROLS_CONFIG.JUMP),
     punchPressed:
       isAnyKeyPressed(CONTROLS_CONFIG.PUNCH) || isMousePressed("left"),

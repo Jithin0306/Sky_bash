@@ -74,6 +74,15 @@ export function updatePhysicsSystem(
  * Updates a single physics object's velocity, bounce, rolling angle, and ground state.
  */
 function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
+  // 0. If waiting in the sky drop queue, count down skyDropDelayTimer before dropping!
+  if (obj.isWaitingToDrop) {
+    obj.skyDropDelayTimer -= delta;
+    if (obj.skyDropDelayTimer <= 0) {
+      obj.respawnFromSky();
+    }
+    return;
+  }
+
   // If carried in a player's hands (Phase 7) or cooling down after exploding (Phase 9), skip floor physics
   if (obj.isCarried || obj.isExplodedCooldown) {
     return;
@@ -165,9 +174,13 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
     }
   }
 
-  // 7. Respawn from the sky if fallen deep into the abyss
+  // 7. Schedule delayed respawn from the sky (5.5s-9.5s wait) if fallen deep into the abyss
   if (obj.zHeight < PLAYER_CONFIG.ABYSS_RESPAWN_Z) {
-    obj.respawnFromSky();
+    if (typeof obj.scheduleSkyRespawn === "function") {
+      obj.scheduleSkyRespawn();
+    } else {
+      obj.respawnFromSky();
+    }
   }
 
   // 8. Phase 8: Clear `isThrownProjectile` once the object settles on the floor
@@ -190,11 +203,11 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
 function resolveObjectToObjectCollisions(objects, camera = null) {
   for (let i = 0; i < objects.length; i++) {
     const a = objects[i];
-    if (a.isCarried || a.isFallingInVoid || a.isExplodedCooldown) continue;
+    if (a.isCarried || a.isFallingInVoid || a.isExplodedCooldown || a.isWaitingToDrop) continue;
 
     for (let j = i + 1; j < objects.length; j++) {
       const b = objects[j];
-      if (b.isCarried || b.isFallingInVoid || b.isExplodedCooldown) continue;
+      if (b.isCarried || b.isFallingInVoid || b.isExplodedCooldown || b.isWaitingToDrop) continue;
 
       // Check vertical height (zHeight) overlap
       if (
@@ -302,7 +315,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
   if (!props || props.length === 0) return;
 
   for (const obj of objects) {
-    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown) continue;
+    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown || obj.isWaitingToDrop) continue;
 
     for (const prop of props) {
       if (prop.isFallingInVoid) continue;
@@ -492,7 +505,7 @@ function resolveFighterToFighterCollisions(fighterList) {
  */
 function resolvePlayerToObjectInteractions(player, objects, camera = null) {
   for (const obj of objects) {
-    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown) continue;
+    if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown || obj.isWaitingToDrop) continue;
 
     // Allow the fighter to jump clean OVER the object if zHeight > object's top!
     if (player.zHeight > obj.zHeight + obj.propHeight - 8) continue;
