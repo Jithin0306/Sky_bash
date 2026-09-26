@@ -18,6 +18,7 @@ import {
   drawGroundShadow,
 } from "../systems/depthSort.js";
 import { spawnPickupVFX } from "../player/playerCombat.js";
+import { sound } from "../systems/sound.js";
 
 const POWERUP_TYPES = ["gloves", "shield", "medkit"];
 
@@ -210,6 +211,10 @@ export function createPowerUp(
     },
   ]);
 
+  if (startZ > 50) {
+    sound.playPowerUpSpawn();
+  }
+
   return orb;
 }
 
@@ -260,6 +265,7 @@ export function updatePowerUpSystem(fighters, activePowerUps, onCollect = null) 
  */
 export function applyPowerUpToFighter(fighter, powerType) {
   if (!fighter) return;
+  sound.playPowerUpCollect();
 
   if (powerType === "gloves") {
     fighter.powerGlovesTimer = 10.0;

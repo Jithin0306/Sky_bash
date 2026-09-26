@@ -42,6 +42,7 @@ import {
   createEnemyAIController,
   PYRO_BOT_PALETTE,
 } from "../ai/enemyAI.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Converts a 2D screen/floor coordinate (x, y) into its true 2.5D radial distance
@@ -73,6 +74,11 @@ export function isPointOnArena(x, y, margin = 0) {
  */
 export function registerArenaScene() {
   scene("arena", () => {
+    sound.playMusic("arena");
+    onKeyPress("m", () => {
+      sound.toggleMute();
+    });
+
     // 1. Initialize the smooth 2.5D camera controller
     const camera = createArenaCamera();
 
@@ -160,6 +166,7 @@ export function registerArenaScene() {
         matchOver = true;
         aiController.enabled = false;
         winnerName = victim === enemyBot ? "VOLT" : "PYRO";
+        sound.playVictory();
       }
     }
 
@@ -179,6 +186,7 @@ export function registerArenaScene() {
           } else {
             winnerName = player.health >= enemyBot.health ? "VOLT" : "PYRO";
           }
+          sound.playVictory();
         }
 
         // Periodic Phase 11 Sky Power-Up Drop every 11-15s!
@@ -334,6 +342,7 @@ export function spawnLandingRing(x, y) {
  * layer z(950) at the cliff edge whenever a target is knocked off the arena!
  */
 export function spawnRingOutBanner(x, y) {
+  sound.playRingOut();
   let age = 0;
   const duration = 1.05;
 

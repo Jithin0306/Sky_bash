@@ -12,6 +12,7 @@
 
 import { OBJECTS_CONFIG, ARENA_CONFIG } from "../config/gameConfig.js";
 import { createPhysicsObject } from "./GameObject.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Spawns a 2.5D Sky Fuse Bomb at (x, y).
@@ -71,6 +72,7 @@ export function createBomb(x, y, startZ = 240, initialDropDelay = 0) {
     if (!this.isLit) {
       this.isLit = true;
       this.fuseTimer = this.fuseDuration;
+      sound.playFuseSpark();
     }
     if (maxRemainingSeconds !== null && this.fuseTimer > maxRemainingSeconds) {
       this.fuseTimer = maxRemainingSeconds;
@@ -455,6 +457,7 @@ export function spawnExplosionVFX(
   blastRadius,
   vfxTheme = "fire"
 ) {
+  sound.playExplosion(vfxTheme);
   let age = 0;
   const duration = 0.62;
 

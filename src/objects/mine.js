@@ -13,6 +13,7 @@
 import { OBJECTS_CONFIG, ARENA_CONFIG } from "../config/gameConfig.js";
 import { createPhysicsObject } from "./GameObject.js";
 import { detonateBomb } from "./bomb.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Spawns a 2.5D Proximity Landmine at (x, y).
@@ -87,6 +88,9 @@ export function createMine(x, y, startZ = 240, initialDropDelay = 0) {
    */
   mine.ignite = function (maxRemainingSeconds = null) {
     if (this.isExplodedCooldown) return;
+    if (!this.isTriggered) {
+      sound.playMineTrigger();
+    }
     this.isArmed = true;
     this.isTriggered = true;
     this.isLit = true;
@@ -156,6 +160,7 @@ export function updateMineSystem(fighters, objects, props, camera) {
         obj.isLit = true;
         obj.fuseTimer = 2.0; // Signals AI to dodge armed mines!
         obj.velocity = vec2(0, 0);
+        sound.playMineArm();
       }
     }
 

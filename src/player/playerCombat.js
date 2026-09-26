@@ -16,6 +16,7 @@ import {
   ARENA_CONFIG,
   COMBAT_CONFIG,
 } from "../config/gameConfig.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Updates the player's melee punch, object pick-up/carry/drop interactions,
@@ -234,6 +235,7 @@ export function pickupObject(player, obj) {
   // Spawn a snappy cyan/gold pickup ring VFX
   const grabLabel = obj.objectType === "fighter" ? "GRABBED!" : "GRAB!";
   spawnPickupVFX(player.pos.x, player.pos.y, player.zHeight + 24, grabLabel);
+  sound.playPickup();
 }
 
 /**
@@ -280,6 +282,7 @@ export function breakFreeFromCarrier(carriedFighter) {
     carriedFighter.zHeight + 20,
     "ESCAPED!"
   );
+  sound.playEscape();
 }
 
 /**
@@ -324,6 +327,7 @@ export function dropHeldObject(player) {
   }
 
   spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "DROP");
+  sound.playDrop();
 }
 
 /**
@@ -398,6 +402,7 @@ export function throwHeldObject(player, camera = null) {
   }
 
   spawnPickupVFX(obj.pos.x, obj.pos.y, obj.zHeight, "YEET!");
+  sound.playThrow();
 }
 
 
@@ -423,6 +428,7 @@ function startPunch(player) {
 
   // Spawn the visual crescent punch swipe arc
   spawnPunchSwipeVFX(player);
+  sound.playPunchSwing();
 }
 
 /**
@@ -497,6 +503,11 @@ function checkPunchHitbox(player, camera) {
       if (typeof target.onPunchHit === "function") {
         target.onPunchHit(vec2(kbDirX, kbDirY), punchForce, rawDamage);
       }
+
+      sound.playPunchHit({
+        isHeavy: hasSuperGloves,
+        isDummy: Boolean(target.wobbleAngle !== undefined || target.totalHitsTaken !== undefined),
+      });
 
       player.hitStopTimer = COMBAT_CONFIG.HIT_STOP_DURATION;
 

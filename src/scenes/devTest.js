@@ -39,6 +39,7 @@ import {
   spawnLandingRing,
   spawnRingOutBanner,
 } from "./arena.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Checks if the current session has unlocked Developer Access.
@@ -66,6 +67,11 @@ export function registerDevTestScene() {
       go("menu");
       return;
     }
+
+    sound.playMusic("arena");
+    onKeyPress("m", () => {
+      sound.toggleMute();
+    });
 
     // 1. Initialize the 2.5D camera controller
     const camera = createArenaCamera();

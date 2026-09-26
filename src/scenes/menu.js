@@ -21,12 +21,14 @@ import {
   getLocalPlayerName,
   setLocalPlayerName,
 } from "../network/trysteroManager.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Registers the "menu" scene with KAPLAY.
  */
 export function registerMenuScene() {
   scene("menu", () => {
+    sound.playMusic("menu");
     const camera = createArenaCamera();
     camera.setZoom(CAMERA_CONFIG.DEFAULT_ZOOM);
 
@@ -73,6 +75,7 @@ export function registerMenuScene() {
 
     // Keyboard shortcuts on Main Menu
     onKeyPress("space", () => {
+      sound.playUIClick();
       if (showNameModal) {
         if (typedPlayerName.length < 12) typedPlayerName += " ";
         return;
@@ -83,6 +86,7 @@ export function registerMenuScene() {
     });
 
     onKeyPress("enter", () => {
+      sound.playUIClick();
       if (showNameModal) {
         typedPlayerName = setLocalPlayerName(typedPlayerName || "PLAYER 1");
         showNameModal = false;
@@ -96,6 +100,7 @@ export function registerMenuScene() {
     });
 
     onKeyPress("n", () => {
+      sound.playUIClick();
       if (!showPinModal && !showNameModal) {
         showNameModal = true;
         typedPlayerName = getLocalPlayerName();
@@ -104,6 +109,13 @@ export function registerMenuScene() {
 
     onKeyPress("m", () => {
       if (!showPinModal && !showNameModal) {
+        sound.toggleMute();
+      }
+    });
+
+    onKeyPress("o", () => {
+      if (!showPinModal && !showNameModal) {
+        sound.playUIClick();
         go("multiplayerLobby", { isOnline: true, mode: "1v1" });
       }
     });
@@ -183,6 +195,12 @@ export function registerMenuScene() {
         return;
       }
 
+      // Audio Mute / Unmute Button at Top-Right
+      if (m.x >= GAME_CONFIG.WIDTH - 130 && m.x <= GAME_CONFIG.WIDTH - 10 && m.y >= 12 && m.y <= 42) {
+        sound.toggleMute();
+        return;
+      }
+
       // 0. Click Custom Player Name Pill on Main Menu
       if (
         m.x >= cx - 175 &&
@@ -190,6 +208,7 @@ export function registerMenuScene() {
         m.y >= cy - 102 &&
         m.y <= cy - 72
       ) {
+        sound.playUIClick();
         showNameModal = true;
         typedPlayerName = getLocalPlayerName();
         return;
@@ -202,6 +221,7 @@ export function registerMenuScene() {
         m.y >= cy - 58 &&
         m.y <= cy - 2
       ) {
+        sound.playUIClick();
         go("multiplayerLobby", { isOnline: false, mode: "1v1" });
         return;
       }
@@ -213,6 +233,7 @@ export function registerMenuScene() {
         m.y >= cy + 14 &&
         m.y <= cy + 70
       ) {
+        sound.playUIClick();
         go("multiplayerLobby", { isOnline: true, mode: "1v1" });
         return;
       }
@@ -224,6 +245,7 @@ export function registerMenuScene() {
         m.y >= cy + 88 &&
         m.y <= cy + 138
       ) {
+        sound.playUIClick();
         requestDevAccess();
       }
     });
@@ -247,6 +269,24 @@ export function registerMenuScene() {
             height: GAME_CONFIG.HEIGHT,
             color: rgb(8, 12, 24),
             opacity: showPinModal || showNameModal ? 0.82 : 0.52,
+          });
+
+          // Audio Mute / Unmute Button at Top-Right
+          const isMuted = sound.isMuted();
+          drawRect({
+            pos: vec2(GAME_CONFIG.WIDTH - 128, 14),
+            width: 114,
+            height: 24,
+            radius: 6,
+            color: rgb(12, 18, 32),
+            opacity: 0.88,
+            outline: { width: 1.5, color: isMuted ? rgb(255, 95, 95) : rgb(95, 235, 160) },
+          });
+          drawText({
+            text: isMuted ? "MUTED (M)" : "AUDIO ON (M)",
+            pos: vec2(GAME_CONFIG.WIDTH - 118, 20),
+            size: 10,
+            color: isMuted ? rgb(255, 145, 145) : rgb(125, 255, 195),
           });
 
           // Main Title Panel

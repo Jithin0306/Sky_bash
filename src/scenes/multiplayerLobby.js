@@ -31,12 +31,14 @@ import {
   getLocalPlayerName,
   setLocalPlayerName,
 } from "../network/trysteroManager.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Registers the "multiplayerLobby" scene with KAPLAY.
  */
 export function registerMultiplayerLobbyScene() {
   scene("multiplayerLobby", (params = {}) => {
+    sound.playMusic("menu");
     const isOnlineLobby = Boolean(params.isOnline);
     const initialRoomCode = params.roomCode || generateRoomCode();
     const joinAsGuest = Boolean(params.joinAsGuest);
@@ -83,6 +85,7 @@ export function registerMultiplayerLobbyScene() {
     }
 
     function applyModeSelection(newMode, newFfaCount = ffaPlayerCount) {
+      sound.playUIClick();
       selectedMode = newMode;
       ffaPlayerCount = Math.max(3, Math.min(6, newFfaCount));
       const maxP =
@@ -99,6 +102,7 @@ export function registerMultiplayerLobbyScene() {
     }
 
     function launchMatchFromLobby() {
+      sound.playUIClick();
       if (isOnlineLobby) {
         const net = getActiveMatchConfig();
         net.onStartMatch = () => safeGoToArena();
@@ -115,12 +119,14 @@ export function registerMultiplayerLobbyScene() {
     }
 
     function openNameEditor() {
+      sound.playUIClick();
       showNameModal = true;
       showJoinCodeModal = false;
       typedPlayerName = getLocalPlayerName();
     }
 
     function saveNameEditor() {
+      sound.playUIClick();
       const saved = setLocalPlayerName(typedPlayerName || "PLAYER 1");
       typedPlayerName = saved;
       showNameModal = false;
@@ -161,6 +167,7 @@ export function registerMultiplayerLobbyScene() {
     onKeyPress("t", () => {
       if (showJoinCodeModal || showNameModal) return;
       if (selectedMode === "2v2") {
+        sound.playUIClick();
         playerTeam = playerTeam === "blue" ? "red" : "blue";
         if (isOnlineLobby) {
           toggleLocalPlayerTeam();
@@ -175,6 +182,7 @@ export function registerMultiplayerLobbyScene() {
       if (!isOnlineLobby || showJoinCodeModal || showNameModal) return;
       const net = getActiveMatchConfig();
       if (net.isHost) {
+        sound.playUIClick();
         fillBotsInOnline = !fillBotsInOnline;
         setLobbyModeConfig(selectedMode, net.maxPlayers, fillBotsInOnline);
       }
@@ -183,6 +191,7 @@ export function registerMultiplayerLobbyScene() {
     // Copy 1-Click Shareable Invite Link (`C` key)
     onKeyPress("c", () => {
       if (!isOnlineLobby || showJoinCodeModal || showNameModal) return;
+      sound.playUIClick();
       const link = copyRoomInviteLink();
       feedbackBanner = `INVITE LINK COPIED! (${link})`;
     });
@@ -190,8 +199,16 @@ export function registerMultiplayerLobbyScene() {
     // Open Join Room by 4-Digit Code Modal (`J` key)
     onKeyPress("j", () => {
       if (!isOnlineLobby || showNameModal) return;
+      sound.playUIClick();
       showJoinCodeModal = !showJoinCodeModal;
       typedJoinCode = "";
+    });
+
+    // Toggle Audio Mute (`M` key)
+    onKeyPress("m", () => {
+      if (!showNameModal && !showJoinCodeModal) {
+        sound.toggleMute();
+      }
     });
 
     // Start Match (`Space` or `Enter`)
@@ -212,6 +229,7 @@ export function registerMultiplayerLobbyScene() {
       }
       if (showJoinCodeModal) {
         if (typedJoinCode.length >= 4) {
+          sound.playUIClick();
           showJoinCodeModal = false;
           const net = connectToTrysteroRoom(
             typedJoinCode,
@@ -227,6 +245,7 @@ export function registerMultiplayerLobbyScene() {
     });
 
     onKeyPress("escape", () => {
+      sound.playUIClick();
       if (showNameModal) {
         showNameModal = false;
       } else if (showJoinCodeModal) {
@@ -275,6 +294,12 @@ export function registerMultiplayerLobbyScene() {
       const m = mousePos();
       const cx = GAME_CONFIG.WIDTH * 0.5;
       const cy = GAME_CONFIG.HEIGHT * 0.5;
+
+      // Audio Mute / Unmute Button at Top-Right
+      if (m.x >= GAME_CONFIG.WIDTH - 130 && m.x <= GAME_CONFIG.WIDTH - 10 && m.y >= 12 && m.y <= 42) {
+        sound.toggleMute();
+        return;
+      }
 
       if (showNameModal) {
         // Save Name button
@@ -378,6 +403,24 @@ export function registerMultiplayerLobbyScene() {
             height: GAME_CONFIG.HEIGHT,
             color: rgb(8, 12, 24),
             opacity: 0.68,
+          });
+
+          // Audio Mute / Unmute Button at Top-Right
+          const isMuted = sound.isMuted();
+          drawRect({
+            pos: vec2(GAME_CONFIG.WIDTH - 128, 14),
+            width: 114,
+            height: 24,
+            radius: 6,
+            color: rgb(12, 18, 32),
+            opacity: 0.88,
+            outline: { width: 1.5, color: isMuted ? rgb(255, 95, 95) : rgb(95, 235, 160) },
+          });
+          drawText({
+            text: isMuted ? "MUTED (M)" : "AUDIO ON (M)",
+            pos: vec2(GAME_CONFIG.WIDTH - 118, 20),
+            size: 10,
+            color: isMuted ? rgb(255, 145, 145) : rgb(125, 255, 195),
           });
 
           // Main Lobby Card

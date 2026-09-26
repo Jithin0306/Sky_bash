@@ -11,6 +11,7 @@
 
 import { PLAYER_CONFIG, ARENA_CONFIG, COMBAT_CONFIG } from "../config/gameConfig.js";
 import { getArenaDistance, isPointOnArena } from "../scenes/arena.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Helper function that moves `current` toward `target` by at most `maxDelta`.
@@ -185,6 +186,7 @@ export function updatePlayerMovement(player, delta) {
     player.isFallingInVoid = false;
     player.justJumped = true;
     player.landingSquash = -0.35; // Slight vertical stretch on takeoff!
+    sound.playJump();
   }
 
   // --------------------------------------------------------------------------
@@ -192,6 +194,7 @@ export function updatePlayerMovement(player, delta) {
   // --------------------------------------------------------------------------
   // Check if the player's (x, y) footprint is currently inside the circular rim
   const overArena = isPointOnArena(player.pos.x, player.pos.y);
+  const wasFalling = Boolean(player.isFallingInVoid);
 
   // Case A: Player was walking on the ground and stepped past the circular edge!
   if (player.isGrounded && !overArena) {
@@ -221,11 +224,16 @@ export function updatePlayerMovement(player, delta) {
         player.isGrounded = true;
         player.justLanded = true;
         player.landingSquash = 1.0; // Trigger landing knee-bend/squash!
+        sound.playLand(player.landImpactSpeed);
       } else {
         // MISSED THE ARENA! Now plummeting below the platform into the void!
         player.isFallingInVoid = true;
       }
     }
+  }
+
+  if (!wasFalling && player.isFallingInVoid) {
+    sound.playCliffFall();
   }
 
   // --------------------------------------------------------------------------

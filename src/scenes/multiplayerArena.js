@@ -61,6 +61,7 @@ import {
   leaveMultiplayerRoom,
 } from "../network/trysteroManager.js";
 import { updateDepthSort } from "../systems/depthSort.js";
+import { sound } from "../systems/sound.js";
 
 /**
  * Computes evenly spaced ring spawn coordinates around the circular arena
@@ -87,6 +88,17 @@ function getRingSpawnCoordinates(slotIndex, totalFighters) {
  */
 export function registerMultiplayerArenaScene() {
   scene("multiplayerArena", () => {
+    sound.playMusic("arena");
+    onKeyPress("m", () => {
+      sound.toggleMute();
+    });
+    onMousePress(() => {
+      const m = mousePos();
+      if (m.x >= GAME_CONFIG.WIDTH - 130 && m.x <= GAME_CONFIG.WIDTH - 10 && m.y >= 12 && m.y <= 42) {
+        sound.toggleMute();
+      }
+    });
+
     const net = getActiveMatchConfig();
     const isOnline = Boolean(net.isOnline);
     const mode = net.mode || "1v1"; // "1v1" | "2v2" | "ffa"
@@ -479,6 +491,7 @@ export function registerMultiplayerArenaScene() {
           isMatchOver = true;
           matchWinnerLabel = data.winnerLabel || "MATCH COMPLETE!";
           matchWinnerColor = data.winnerColor || [95, 245, 255];
+          sound.playVictory();
         } else if (data.type === "REMATCH") {
           go("multiplayerArena");
         }
@@ -523,6 +536,10 @@ export function registerMultiplayerArenaScene() {
           matchWinnerLabel = `${winName} ${modeSuffix}`;
           matchWinnerColor = bestFighter.uiColor || [95, 245, 255];
         }
+      }
+
+      if (isMatchOver) {
+        sound.playVictory();
       }
 
       if (isMatchOver && isOnline && net.isHost && net.sendResult) {
@@ -1015,23 +1032,41 @@ function createMultiplayerScoreboardHUD(
           color: secs <= 15 ? rgb(255, 95, 95) : rgb(225, 245, 255),
         });
 
-        // 3. Bottom Controls Strip
+        // 3. Audio Mute / Unmute Button at Top-Right
+        const isMuted = sound.isMuted();
         drawRect({
-          pos: vec2(cx - 285, GAME_CONFIG.HEIGHT - 32),
-          width: 570,
+          pos: vec2(GAME_CONFIG.WIDTH - 128, 14),
+          width: 114,
+          height: 24,
+          radius: 6,
+          color: rgb(12, 18, 32),
+          opacity: 0.88,
+          outline: { width: 1.5, color: isMuted ? rgb(255, 95, 95) : rgb(95, 235, 160) },
+        });
+        drawText({
+          text: isMuted ? "MUTED (M)" : "AUDIO ON (M)",
+          pos: vec2(GAME_CONFIG.WIDTH - 118, 20),
+          size: 10,
+          color: isMuted ? rgb(255, 145, 145) : rgb(125, 255, 195),
+        });
+
+        // 4. Bottom Controls Strip
+        drawRect({
+          pos: vec2(cx - 310, GAME_CONFIG.HEIGHT - 32),
+          width: 620,
           height: 24,
           radius: 6,
           color: rgb(12, 16, 28),
           opacity: 0.78,
         });
         drawText({
-          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump  |  J : Punch  |  E : Grab  |  K : Throw  |  ESC : Menu",
-          pos: vec2(cx - 270, GAME_CONFIG.HEIGHT - 25),
+          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump  |  J : Punch  |  E : Grab  |  K : Throw  |  M : Audio  |  ESC : Menu",
+          pos: vec2(cx - 295, GAME_CONFIG.HEIGHT - 25),
           size: 10,
           color: rgb(195, 215, 245),
         });
 
-        // 4. Victory / Defeat Podium Overlay
+        // 5. Victory / Defeat Podium Overlay
         if (getIsMatchOver()) {
           const cy = GAME_CONFIG.HEIGHT * 0.5;
           const winCol = getWinnerColor();

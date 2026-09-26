@@ -21,6 +21,7 @@ import { spawnHitImpactVFX } from "../player/playerCombat.js";
 import { updateBombSystem } from "../objects/bomb.js";
 import { updateStickyBombSystem } from "../objects/stickyBomb.js";
 import { updateMineSystem } from "../objects/mine.js";
+import { sound } from "./sound.js";
 
 /**
  * Steps the entire 2.5D object physics simulation for the current frame.
@@ -149,6 +150,10 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
         const impactSpeed = Math.abs(obj.velZ);
         obj.zHeight = 0;
 
+        if (impactSpeed > 75) {
+          sound.playBounce(obj.objectType, impactSpeed);
+        }
+
         // Heavy objects shake the camera when slamming onto the sandstone floor!
         if (impactSpeed > 220 && obj.mass >= 2.0 && camera) {
           camera.shake(6.5);
@@ -270,6 +275,16 @@ function resolveObjectToObjectCollisions(objects, camera = null) {
 
         // Only bounce if moving toward each other
         if (velAlongNormal < 0) {
+          if (Math.abs(velAlongNormal) > 55) {
+            const hitType =
+              a.objectType === "heavyBox" || b.objectType === "heavyBox"
+                ? "heavyBox"
+                : a.objectType === "ball" || b.objectType === "ball"
+                ? "ball"
+                : a.objectType;
+            sound.playBounce(hitType, Math.abs(velAlongNormal));
+          }
+
           const restitution = Math.max(a.bounce, b.bounce, 0.42);
           const impulse =
             (-(1 + restitution) * velAlongNormal) / totalInvMass;
