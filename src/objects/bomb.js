@@ -122,6 +122,19 @@ export function updateBombSystem(fighters, objects, props, camera) {
   }
 }
 
+let explosionListeners = [];
+
+/**
+ * Registers a callback invoked whenever any bomb, sticky bomb, or mine detonates.
+ * Used by multiplayerArena to broadcast explosions to remote peers.
+ */
+export function registerExplosionListener(cb) {
+  explosionListeners.push(cb);
+  return () => {
+    explosionListeners = explosionListeners.filter((l) => l !== cb);
+  };
+}
+
 /**
  * Triggers a massive 2.5D radial explosion at the explosive's current position!
  * Shared by Sky Fuse Bombs, Slime Sticky Bombs, and Proximity Landmines.
@@ -173,6 +186,21 @@ export function detonateBomb(
     camera.shake(17.5);
   }
   spawnExplosionVFX(blastX, blastY, blastZ, radius, vfxTheme);
+
+  // Notify registered explosion listeners (e.g. Host WebRTC broadcast)
+  for (const listener of explosionListeners) {
+    try {
+      listener({
+        x: Math.round(blastX),
+        y: Math.round(blastY),
+        z: Math.round(blastZ),
+        radius,
+        theme: vfxTheme,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   // 3. Apply radial 2.5D blast knockback to ALL Fighters (Volt & Pyro AI!)
   const fighters = Array.isArray(fighterList)

@@ -16,7 +16,12 @@ import {
 import { createArenaCamera } from "../systems/camera.js";
 import { readLocalPlayerInput } from "../systems/input.js";
 import { createPlayer } from "../player/Player.js";
-import { updatePhysicsSystem } from "../systems/physics.js";
+import { respawnPlayer } from "../player/playerMovement.js";
+import {
+  updatePhysicsSystem,
+  resolveFighterToFighterCollisions,
+  resolvePlayerToObjectInteractions,
+} from "../systems/physics.js";
 import { createCrate } from "../objects/crate.js";
 import { createBall } from "../objects/ball.js";
 import { createHeavyBox } from "../objects/heavyBox.js";
@@ -26,7 +31,18 @@ import { createMine } from "../objects/mine.js";
 import {
   createPowerUp,
   updatePowerUpSystem,
+  applyPowerUpToFighter,
 } from "../objects/powerup.js";
+import {
+  spawnExplosionVFX,
+  registerExplosionListener,
+} from "../objects/bomb.js";
+import {
+  pickupObject,
+  throwHeldObject,
+  dropHeldObject,
+  spawnPickupVFX,
+} from "../player/playerCombat.js";
 import {
   createEnemyAIController,
   FIGHTER_ROSTER,
@@ -44,6 +60,7 @@ import {
   getActiveMatchConfig,
   leaveMultiplayerRoom,
 } from "../network/trysteroManager.js";
+import { updateDepthSort } from "../systems/depthSort.js";
 
 /**
  * Computes evenly spaced ring spawn coordinates around the circular arena
@@ -143,6 +160,13 @@ export function registerMultiplayerArenaScene() {
       f.isRemoteHuman = isRemoteHuman;
       f.netTargetPos = vec2(spawn.x, spawn.y);
       f.netTargetZ = 0;
+      f.respawn = function (rx, ry) {
+        respawnPlayer(f);
+        if (typeof rx === "number" && typeof ry === "number") {
+          f.pos.x = rx;
+          f.pos.y = ry;
+        }
+      };
 
       if (isLocalHuman) {
         localFighter = f;
@@ -163,30 +187,45 @@ export function registerMultiplayerArenaScene() {
       }
     }
 
-    // 3. Spawn Arena Props & Explosives
+    // 3. Spawn Arena Props & Explosives with Deterministic Network IDs
     const props = createDepthTestProps(false);
     const crates = [
-      createCrate(ARENA_CONFIG.CENTER_X - 95, ARENA_CONFIG.CENTER_Y - 58),
-      createCrate(ARENA_CONFIG.CENTER_X + 95, ARENA_CONFIG.CENTER_Y - 58),
-      createCrate(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y + 75),
+      createCrate(ARENA_CONFIG.CENTER_X - 95, ARENA_CONFIG.CENTER_Y - 58, 0, 0),
+      createCrate(ARENA_CONFIG.CENTER_X + 95, ARENA_CONFIG.CENTER_Y - 58, 0, 0),
+      createCrate(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y + 75, 0, 0),
     ];
+    crates[0].netId = "crate_0";
+    crates[1].netId = "crate_1";
+    crates[2].netId = "crate_2";
+
     const balls = [
-      createBall(ARENA_CONFIG.CENTER_X - 65, ARENA_CONFIG.CENTER_Y + 32),
-      createBall(ARENA_CONFIG.CENTER_X + 65, ARENA_CONFIG.CENTER_Y - 22),
+      createBall(ARENA_CONFIG.CENTER_X - 65, ARENA_CONFIG.CENTER_Y + 32, 0, 0),
+      createBall(ARENA_CONFIG.CENTER_X + 65, ARENA_CONFIG.CENTER_Y - 22, 0, 0),
     ];
+    balls[0].netId = "ball_0";
+    balls[1].netId = "ball_1";
+
     const heavyBoxes = [
-      createHeavyBox(ARENA_CONFIG.CENTER_X + 125, ARENA_CONFIG.CENTER_Y + 35),
+      createHeavyBox(ARENA_CONFIG.CENTER_X + 125, ARENA_CONFIG.CENTER_Y + 35, 0, 0),
     ];
+    heavyBoxes[0].netId = "heavy_0";
+
     const bombs = [
-      createBomb(ARENA_CONFIG.CENTER_X - 45, ARENA_CONFIG.CENTER_Y - 18),
-      createBomb(ARENA_CONFIG.CENTER_X + 45, ARENA_CONFIG.CENTER_Y + 18),
+      createBomb(ARENA_CONFIG.CENTER_X - 45, ARENA_CONFIG.CENTER_Y - 18, 0, 0),
+      createBomb(ARENA_CONFIG.CENTER_X + 45, ARENA_CONFIG.CENTER_Y + 18, 0, 0),
     ];
+    bombs[0].netId = "bomb_0";
+    bombs[1].netId = "bomb_1";
+
     const stickyBombs = [
-      createStickyBomb(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y - 72),
+      createStickyBomb(ARENA_CONFIG.CENTER_X, ARENA_CONFIG.CENTER_Y - 72, 0, 0),
     ];
+    stickyBombs[0].netId = "sticky_0";
+
     const mines = [
-      createMine(ARENA_CONFIG.CENTER_X - 115, ARENA_CONFIG.CENTER_Y + 25),
+      createMine(ARENA_CONFIG.CENTER_X - 115, ARENA_CONFIG.CENTER_Y + 25, 0, 0),
     ];
+    mines[0].netId = "mine_0";
 
     physicsObjects.push(
       ...crates,
@@ -196,6 +235,11 @@ export function registerMultiplayerArenaScene() {
       ...stickyBombs,
       ...mines
     );
+
+    for (const obj of physicsObjects) {
+      obj.netTargetPos = vec2(obj.pos.x, obj.pos.y);
+      obj.netTargetZ = 0;
+    }
 
     // 4. Match State, 99s Clock & Power-Up Drops
     let matchTimer = 99.0;
@@ -208,27 +252,48 @@ export function registerMultiplayerArenaScene() {
     const powerUpCycle = ["gloves", "shield", "medkit"];
     let powerUpIndex = 0;
 
-    function spawnRandomSkyPowerUp(forcedType = null, forcedX = null, forcedY = null) {
+    let cleanupExplosionListener = null;
+    if (isOnline && net.isHost) {
+      cleanupExplosionListener = registerExplosionListener((exp) => {
+        if (net.sendWorld) {
+          net.sendWorld({
+            type: "EXPLOSION",
+            ...exp,
+          });
+        }
+      });
+    }
+
+    function spawnRandomSkyPowerUp(forcedType = null, forcedX = null, forcedY = null, forcedId = null) {
       if (activePowerUps.length >= 2) return;
       const angle = rand(0, Math.PI * 2);
       const dist = rand(45, ARENA_CONFIG.RADIUS * 0.58);
       const px =
-        forcedX !== null ? forcedX : ARENA_CONFIG.CENTER_X + Math.cos(angle) * dist;
+        forcedX !== null ? forcedX : Math.round(ARENA_CONFIG.CENTER_X + Math.cos(angle) * dist);
       const py =
         forcedY !== null
           ? forcedY
-          : ARENA_CONFIG.CENTER_Y +
-            Math.sin(angle) * dist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+          : Math.round(
+              ARENA_CONFIG.CENTER_Y +
+                Math.sin(angle) * dist * ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+            );
       const pType = forcedType || powerUpCycle[powerUpIndex % powerUpCycle.length];
+      const pId = forcedId || `powerup_${powerUpIndex}_${Math.floor(time() * 10)}`;
       powerUpIndex += 1;
-      activePowerUps.push(createPowerUp(px, py, pType));
+
+      const orb = createPowerUp(px, py, pType, 240, pId);
+      orb.netTargetPos = vec2(px, py);
+      orb.netTargetZ = 240;
+      activePowerUps.push(orb);
 
       if (isOnline && net.isHost && net.sendWorld) {
         net.sendWorld({
           type: "POWERUP_SPAWN",
+          id: pId,
           pType,
           x: px,
           y: py,
+          z: 240,
         });
       }
     }
@@ -272,24 +337,137 @@ export function registerMultiplayerArenaScene() {
             punchPressed: true,
           });
         } else if (data.action === "pickup") {
-          actor.setInput({
-            ...actor.input,
-            pickupPressed: true,
-          });
+          let cand = null;
+          if (data.candNetId) {
+            cand = physicsObjects.find((o) => o.netId === data.candNetId);
+          } else if (typeof data.candSlot === "number") {
+            cand = fighters.find((f) => f.slotIndex === data.candSlot);
+          }
+          if (cand && !actor.heldObject) {
+            pickupObject(actor, cand);
+          } else {
+            actor.setInput({
+              ...actor.input,
+              pickupPressed: true,
+            });
+          }
         } else if (data.action === "throw") {
-          actor.setInput({
-            ...actor.input,
-            throwPressed: true,
-          });
+          if (actor.heldObject) {
+            throwHeldObject(actor, camera);
+          } else {
+            actor.setInput({
+              ...actor.input,
+              throwPressed: true,
+            });
+          }
         }
       };
 
       net.onWorldSync = (data) => {
         if (!data || net.isHost) return;
-        if (data.type === "TIMER_SYNC" && typeof data.timer === "number") {
-          matchTimer = data.timer;
+        if (data.type === "WORLD_SNAPSHOT") {
+          if (typeof data.timer === "number") {
+            matchTimer = data.timer;
+          }
+
+          // 1. Synchronize all 10 arena physics objects (crates, balls, heavyBoxes, bombs, mines)
+          if (Array.isArray(data.items)) {
+            for (const item of data.items) {
+              const obj = physicsObjects.find((o) => o.netId === item.id);
+              if (!obj) continue;
+
+              // Carrying state synchronization
+              if (typeof item.cSlot === "number") {
+                const carrier = fighters.find((f) => f.slotIndex === item.cSlot);
+                if (carrier) {
+                  obj.isCarried = true;
+                  obj.carrier = carrier;
+                  carrier.heldObject = obj;
+                  obj.pos.x = carrier.pos.x;
+                  obj.pos.y = carrier.pos.y;
+                  obj.zHeight = carrier.zHeight + 56;
+                  obj.velocity.x = 0;
+                  obj.velocity.y = 0;
+                  obj.velZ = 0;
+                }
+              } else {
+                if (obj.isCarried) {
+                  if (obj.carrier && obj.carrier.heldObject === obj) {
+                    obj.carrier.heldObject = null;
+                  }
+                  obj.isCarried = false;
+                  obj.carrier = null;
+                }
+                obj.netTargetPos.x = item.x;
+                obj.netTargetPos.y = item.y;
+                obj.netTargetZ = item.z;
+                obj.velocity.x = item.vx;
+                obj.velocity.y = item.vy;
+                obj.velZ = item.vz;
+                obj.isFallingInVoid = item.void;
+                obj.isWaitingToDrop = item.drop;
+                obj.isLit = item.lit;
+                if (typeof item.fuse === "number") obj.fuseTimer = item.fuse;
+                obj.isArmed = item.arm;
+                obj.isTriggered = item.trig;
+              }
+            }
+          }
+
+          // 2. Synchronize active power-up orbs
+          if (Array.isArray(data.powerups)) {
+            for (const p of data.powerups) {
+              let orb = activePowerUps.find((o) => o.netId === p.id);
+              if (!orb && !p.col) {
+                orb = createPowerUp(p.x, p.y, p.t, p.z, p.id);
+                orb.netTargetPos = vec2(p.x, p.y);
+                orb.netTargetZ = p.z;
+                activePowerUps.push(orb);
+              } else if (orb) {
+                if (p.col && !orb.isCollected) {
+                  orb.isCollected = true;
+                  destroy(orb);
+                } else if (!p.col) {
+                  orb.netTargetPos.x = p.x;
+                  orb.netTargetPos.y = p.y;
+                  orb.netTargetZ = p.z;
+                }
+              }
+            }
+
+            // Remove any orbs locally that Host no longer tracks
+            for (let i = activePowerUps.length - 1; i >= 0; i--) {
+              const localOrb = activePowerUps[i];
+              if (!data.powerups.some((p) => p.id === localOrb.netId)) {
+                localOrb.isCollected = true;
+                destroy(localOrb);
+                activePowerUps.splice(i, 1);
+              }
+            }
+          }
         } else if (data.type === "POWERUP_SPAWN") {
-          spawnRandomSkyPowerUp(data.pType, data.x, data.y);
+          let orb = activePowerUps.find((o) => o.netId === data.id);
+          if (!orb) {
+            orb = createPowerUp(data.x, data.y, data.pType, data.z || 240, data.id);
+            orb.netTargetPos = vec2(data.x, data.y);
+            orb.netTargetZ = data.z || 240;
+            activePowerUps.push(orb);
+          }
+        } else if (data.type === "POWERUP_COLLECT") {
+          const targetFighter = fighters.find((f) => f.slotIndex === data.slot);
+          if (targetFighter) {
+            applyPowerUpToFighter(targetFighter, data.pType);
+          }
+          const orb = activePowerUps.find((p) => p.netId === data.id);
+          if (orb) {
+            orb.isCollected = true;
+            destroy(orb);
+          }
+        } else if (data.type === "EXPLOSION") {
+          spawnExplosionVFX(data.x, data.y, data.z, data.radius, data.theme);
+          if (camera) {
+            camera.shake(17.5);
+          }
         }
       };
 
@@ -357,6 +535,7 @@ export function registerMultiplayerArenaScene() {
     // Rematch (`Space` / `Enter`) or Return to Menu (`Escape`)
     onKeyPress("space", () => {
       if (isMatchOver) {
+        if (cleanupExplosionListener) cleanupExplosionListener();
         if (isOnline && net.isHost && net.sendResult) {
           net.sendResult({ type: "REMATCH" });
         }
@@ -365,6 +544,7 @@ export function registerMultiplayerArenaScene() {
     });
     onKeyPress("enter", () => {
       if (isMatchOver) {
+        if (cleanupExplosionListener) cleanupExplosionListener();
         if (isOnline && net.isHost && net.sendResult) {
           net.sendResult({ type: "REMATCH" });
         }
@@ -372,6 +552,7 @@ export function registerMultiplayerArenaScene() {
       }
     });
     onKeyPress("escape", () => {
+      if (cleanupExplosionListener) cleanupExplosionListener();
       leaveMultiplayerRoom();
       go("menu");
     });
@@ -408,7 +589,13 @@ export function registerMultiplayerArenaScene() {
           if (inputSnapshot.punchPressed) {
             net.sendCombat({ slot: localFighter.slotIndex, action: "punch" });
           } else if (inputSnapshot.pickupPressed) {
-            net.sendCombat({ slot: localFighter.slotIndex, action: "pickup" });
+            const cand = localFighter.nearestPickupCandidate;
+            net.sendCombat({
+              slot: localFighter.slotIndex,
+              action: "pickup",
+              candNetId: cand?.netId || null,
+              candSlot: typeof cand?.slotIndex === "number" ? cand.slotIndex : null,
+            });
           } else if (inputSnapshot.throwPressed) {
             net.sendCombat({ slot: localFighter.slotIndex, action: "throw" });
           }
@@ -478,23 +665,145 @@ export function registerMultiplayerArenaScene() {
             lives: localFighter.lives,
             elim: localFighter.isEliminated,
           });
+
+          // Host also broadcasts AI bot states to guests
+          if (net.isHost) {
+            for (const { bot } of aiControllers) {
+              if (bot.isEliminated) continue;
+              net.sendMove({
+                slot: bot.slotIndex,
+                pName: bot.playerName || bot.displayName,
+                x: Math.round(bot.pos.x),
+                y: Math.round(bot.pos.y),
+                z: Math.round(bot.zHeight || 0),
+                vx: Math.round(bot.velocity.x || 0),
+                vy: Math.round(bot.velocity.y || 0),
+                vz: Math.round(bot.velZ || 0),
+                fx: Number(bot.facing.x.toFixed(2)),
+                fy: Number(bot.facing.y.toFixed(2)),
+                hp: bot.health,
+                lives: bot.lives,
+                elim: bot.isEliminated,
+              });
+            }
+          }
         }
       }
 
+      // Host broadcasts authoritative World Snapshot at 15Hz (items, powerups, timer)
       if (isOnline && net.isHost && net.sendWorld) {
         worldSyncAccum += delta;
-        if (worldSyncAccum >= 1.0) {
+        if (worldSyncAccum >= 0.066) {
           worldSyncAccum = 0;
           net.sendWorld({
-            type: "TIMER_SYNC",
-            timer: matchTimer,
+            type: "WORLD_SNAPSHOT",
+            timer: Math.round(matchTimer * 10) / 10,
+            items: physicsObjects.map((obj) => ({
+              id: obj.netId,
+              x: Math.round(obj.pos.x),
+              y: Math.round(obj.pos.y),
+              z: Math.round(obj.zHeight || 0),
+              vx: Math.round(obj.velocity.x || 0),
+              vy: Math.round(obj.velocity.y || 0),
+              vz: Math.round(obj.velZ || 0),
+              cSlot: obj.isCarried && obj.carrier ? obj.carrier.slotIndex : null,
+              lit: Boolean(obj.isLit),
+              fuse: typeof obj.fuseTimer === "number" ? Number(obj.fuseTimer.toFixed(1)) : null,
+              arm: Boolean(obj.isArmed),
+              trig: Boolean(obj.isTriggered),
+              void: Boolean(obj.isFallingInVoid),
+              drop: Boolean(obj.isWaitingToDrop),
+            })),
+            powerups: activePowerUps.map((p) => ({
+              id: p.netId,
+              t: p.powerType,
+              x: Math.round(p.pos.x),
+              y: Math.round(p.pos.y),
+              z: Math.round(p.zHeight || 0),
+              col: Boolean(p.isCollected),
+            })),
           });
         }
       }
 
       // 6. Physics & Power-Ups
-      updatePhysicsSystem(fighters, physicsObjects, props, camera);
-      updatePowerUpSystem(fighters, activePowerUps);
+      if (!isOnline || net.isHost) {
+        // Host & Single-Player: Authoritative 2.5D physics and powerup collection
+        updatePhysicsSystem(fighters, physicsObjects, props, camera);
+        updatePowerUpSystem(fighters, activePowerUps, (orb, fighter) => {
+          if (isOnline && net.isHost && net.sendWorld) {
+            net.sendWorld({
+              type: "POWERUP_COLLECT",
+              id: orb.netId,
+              pType: orb.powerType,
+              slot: fighter.slotIndex,
+            });
+          }
+        });
+      } else {
+        // Guest: Smoothly interpolate all objects & powerups to Host's authoritative positions!
+        for (const obj of physicsObjects) {
+          if (obj.isCarried && obj.carrier) {
+            obj.pos.x = obj.carrier.pos.x;
+            obj.pos.y = obj.carrier.pos.y;
+            obj.zHeight = obj.carrier.zHeight + 56;
+            obj.velZ = 0;
+          } else if (obj.isWaitingToDrop) {
+            obj.pos.x = -2000;
+            obj.pos.y = -2000;
+            obj.zHeight = 0;
+          } else {
+            const tx = obj.netTargetPos.x;
+            const ty = obj.netTargetPos.y;
+            const tz = obj.netTargetZ;
+
+            const distSq = (obj.pos.x - tx) ** 2 + (obj.pos.y - ty) ** 2;
+            if (distSq > 150000) {
+              obj.pos.x = tx;
+              obj.pos.y = ty;
+              obj.zHeight = tz;
+            } else {
+              obj.pos.x = lerp(obj.pos.x, tx, Math.min(1, delta * 16));
+              obj.pos.y = lerp(obj.pos.y, ty, Math.min(1, delta * 16));
+              obj.zHeight = lerp(obj.zHeight, tz, Math.min(1, delta * 16));
+            }
+
+            const speed = Math.hypot(
+              obj.velocity.x,
+              obj.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+            );
+            if (speed > 2) {
+              const dirSign = obj.velocity.x >= 0 ? 1 : -1;
+              obj.rollAngle += dirSign * (speed / obj.footprintRadius) * delta * 35;
+            }
+          }
+
+          if (typeof obj.squashFactor === "number" && !isNaN(obj.squashFactor)) {
+            obj.squashFactor = lerp(obj.squashFactor, 0, Math.min(1, 10 * delta));
+          } else {
+            obj.squashFactor = 0;
+          }
+          updateDepthSort(obj);
+        }
+
+        // Guest: Smoothly interpolate active powerups
+        for (const orb of activePowerUps) {
+          if (orb.isCollected || !orb.exists()) continue;
+          if (orb.netTargetPos) {
+            orb.pos.x = lerp(orb.pos.x, orb.netTargetPos.x, Math.min(1, delta * 16));
+            orb.pos.y = lerp(orb.pos.y, orb.netTargetPos.y, Math.min(1, delta * 16));
+            if (typeof orb.netTargetZ === "number") {
+              orb.zHeight = lerp(orb.zHeight, orb.netTargetZ, Math.min(1, delta * 16));
+            }
+          }
+          updateDepthSort(orb);
+        }
+
+        // Guest fighter-to-fighter body collisions
+        resolveFighterToFighterCollisions(fighters);
+        // Guest local fighter pushing interactions with objects for tactile collision feel
+        resolvePlayerToObjectInteractions(localFighter, physicsObjects, camera);
+      }
 
       // 7. Ring-Outs, 0% HP KOs, Stock Life Deduction & Sky Respawns
       for (const f of fighters) {

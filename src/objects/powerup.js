@@ -33,7 +33,8 @@ export function createPowerUp(
   x = ARENA_CONFIG.CENTER_X,
   y = ARENA_CONFIG.CENTER_Y,
   powerType = null,
-  startZ = 240
+  startZ = 240,
+  netId = null
 ) {
   const chosenType =
     powerType || POWERUP_TYPES[Math.floor(rand(0, POWERUP_TYPES.length))];
@@ -43,6 +44,7 @@ export function createPowerUp(
     z(Math.round(y)),
     "powerUpOrb",
     {
+      netId: netId || `powerup_${Math.random().toString(36).slice(2, 8)}`,
       powerType: chosenType,
       footprintRadius: 19,
       zHeight: startZ,
@@ -58,8 +60,18 @@ export function createPowerUp(
           return;
         }
 
-        // Sky-drop gravity with gentle parachute descent
-        if (!this.isGrounded) {
+        // If driven by network target (Guest), smoothly interpolate to Host position & height!
+        if (this.netTargetPos) {
+          this.pos.x = lerp(this.pos.x, this.netTargetPos.x, Math.min(1, delta * 16));
+          this.pos.y = lerp(this.pos.y, this.netTargetPos.y, Math.min(1, delta * 16));
+          if (typeof this.netTargetZ === "number") {
+            this.zHeight = lerp(this.zHeight, this.netTargetZ, Math.min(1, delta * 16));
+            if (this.zHeight <= 2) {
+              this.isGrounded = true;
+            }
+          }
+        } else if (!this.isGrounded) {
+          // Sky-drop gravity with gentle parachute descent (Host & Single-Player)
           this.velZ = Math.max(-290, this.velZ - 640 * delta);
           this.zHeight += this.velZ * delta;
           if (this.zHeight <= 0) {
@@ -204,7 +216,7 @@ export function createPowerUp(
 /**
  * Checks if any Fighter touches an active Power-Up Orb and applies its buff!
  */
-export function updatePowerUpSystem(fighters, activePowerUps) {
+export function updatePowerUpSystem(fighters, activePowerUps, onCollect = null) {
   const fighterList = Array.isArray(fighters)
     ? fighters
     : fighters
@@ -232,6 +244,9 @@ export function updatePowerUpSystem(fighters, activePowerUps) {
       if (dist <= fighter.footprintRadius + orb.footprintRadius + 6) {
         applyPowerUpToFighter(fighter, orb.powerType);
         orb.isCollected = true;
+        if (onCollect) {
+          onCollect(orb, fighter);
+        }
         destroy(orb);
         activePowerUps.splice(i, 1);
         break;

@@ -483,7 +483,7 @@ function resolveObjectToPropCollisions(objects, props, camera = null) {
  * Phase 10: Resolves solid 2.5D body collisions between fighters (Volt vs Pyro AI)
  * so they cannot walk through each other and can body-check near the cliff rim!
  */
-function resolveFighterToFighterCollisions(fighterList) {
+export function resolveFighterToFighterCollisions(fighterList) {
   for (let i = 0; i < fighterList.length; i++) {
     const a = fighterList[i];
     if (!a || a.isFallingInVoid) continue;
@@ -517,7 +517,7 @@ function resolveFighterToFighterCollisions(fighterList) {
 /**
  * Resolves Fighter-vs-Object pushing AND Thrown Projectile-vs-Fighter impacts!
  */
-function resolvePlayerToObjectInteractions(player, objects, camera = null) {
+export function resolvePlayerToObjectInteractions(player, objects, camera = null) {
   for (const obj of objects) {
     if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown || obj.isWaitingToDrop) continue;
 
