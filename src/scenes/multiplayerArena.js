@@ -89,14 +89,10 @@ function getRingSpawnCoordinates(slotIndex, totalFighters) {
 export function registerMultiplayerArenaScene() {
   scene("multiplayerArena", () => {
     sound.playMusic("arena");
-    onKeyPress("m", () => {
-      sound.toggleMute();
-    });
+    sound.registerAudioKeyBindings();
     onMousePress(() => {
       const m = mousePos();
-      if (m.x >= GAME_CONFIG.WIDTH - 130 && m.x <= GAME_CONFIG.WIDTH - 10 && m.y >= 12 && m.y <= 42) {
-        sound.toggleMute();
-      }
+      if (sound.handleAudioClick(m.x, m.y)) return;
     });
 
     const net = getActiveMatchConfig();
@@ -1032,37 +1028,22 @@ function createMultiplayerScoreboardHUD(
           color: secs <= 15 ? rgb(255, 95, 95) : rgb(225, 245, 255),
         });
 
-        // 3. Audio Mute / Unmute Button at Top-Right
-        const isMuted = sound.isMuted();
-        drawRect({
-          pos: vec2(GAME_CONFIG.WIDTH - 128, 14),
-          width: 114,
-          height: 24,
-          radius: 6,
-          color: rgb(12, 18, 32),
-          opacity: 0.88,
-          outline: { width: 1.5, color: isMuted ? rgb(255, 95, 95) : rgb(95, 235, 160) },
-        });
-        drawText({
-          text: isMuted ? "MUTED (M)" : "AUDIO ON (M)",
-          pos: vec2(GAME_CONFIG.WIDTH - 118, 20),
-          size: 10,
-          color: isMuted ? rgb(255, 145, 145) : rgb(125, 255, 195),
-        });
+        // 3. Separate Music & SFX Mute Buttons at Top-Right
+        sound.drawAudioHUD();
 
         // 4. Bottom Controls Strip
         drawRect({
-          pos: vec2(cx - 310, GAME_CONFIG.HEIGHT - 32),
-          width: 620,
+          pos: vec2(cx - 325, GAME_CONFIG.HEIGHT - 32),
+          width: 650,
           height: 24,
           radius: 6,
           color: rgb(12, 16, 28),
           opacity: 0.78,
         });
         drawText({
-          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump  |  J : Punch  |  E : Grab  |  K : Throw  |  M : Audio  |  ESC : Menu",
-          pos: vec2(cx - 295, GAME_CONFIG.HEIGHT - 25),
-          size: 10,
+          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump  |  J : Punch  |  E : Grab  |  K : Throw  |  M : Music  |  X : SFX  |  ESC : Menu",
+          pos: vec2(cx - 312, GAME_CONFIG.HEIGHT - 25),
+          size: 9.5,
           color: rgb(195, 215, 245),
         });
 

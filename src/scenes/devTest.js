@@ -315,11 +315,21 @@ function createDevTestHUD(
     camera.setZoom(isZoomedIn ? 1.0 : CAMERA_CONFIG.DEFAULT_ZOOM);
   });
 
+  // Audio Controls (M for Music, X for SFX)
+  sound.registerAudioKeyBindings();
+  onMousePress(() => {
+    const m = mousePos();
+    if (sound.handleAudioClick(m.x, m.y)) return;
+  });
+
   add([
     fixed(),
     z(1000),
     {
       draw() {
+        // Audio HUD (Separate Music & SFX Buttons at Top-Right)
+        sound.drawAudioHUD();
+
         // 1. Top-Left Developer Telemetry & Debug Console Card
         drawRect({
           pos: vec2(14, 12),

@@ -35,7 +35,8 @@ Connect instantly with friends across the globe directly in the browser—no ser
 | **Punch (1-2 Combo)** | `Left Mouse Click` or `J` |
 | **Pick Up / Place Down** | `E` |
 | **Throw Object / Bomb** | `K` |
-| **Toggle Audio / Mute** | `M` or Click top-right Speaker Icon |
+| **Toggle Music (BGM)** | `M` or Click `[🎵 MUSIC]` button |
+| **Toggle Sound Effects (SFX)** | `X` or Click `[🔊 SFX]` button |
 | **Change Player Name** | `N` |
 | **Spawn Physics Object** | `R` (in Practice mode) |
 | **Test Camera Zoom / Shake** | `Z` / `C` |
@@ -47,7 +48,7 @@ Connect instantly with friends across the globe directly in the browser—no ser
 - **100% Serverless Web Audio Synthesizer & Procedural Sounds**:
   - **Procedural Sound Effects**: Dynamic punch swooshes, bone-crunching hits, bouncy arcade jumps, landing thuds, item pickups, yeet throws, material-based bounces (metal, wood, rubber), multi-layered explosions (KABOOM!!), proximity mine beeps, power-up chimes, cartoon slide-whistles, boxing ring bells, and triumphant victory fanfares.
   - **Procedural Background Music (BGM)**: Built-in 128 BPM electronic brawler battle groove (4-on-the-floor kick, snappy snare, hi-hats, funky bassline, and lead arpeggios) for the arena, plus a chill synthwave ambient groove for the menu.
-  - **Audio Controls**: Persistent mute/unmute state (`M` key or interactive HUD speaker button) with zero external audio assets required.
+  - **Dual Independent Audio Controls**: Independent mute channels for background music and sound effects with dedicated hotkeys (`M` for Music, `X` for SFX) and interactive top-right HUD buttons with persistent `localStorage` memory. Zero external audio assets required!
 
 - **Visual Clarity & High-DPI Rendering**:
   - Native pixel-density rendering (`pixelDensity: Math.min(window.devicePixelRatio, 2)`) ensures crisp, sharp text and UI on high-resolution, Retina, and Windows scaling monitors.

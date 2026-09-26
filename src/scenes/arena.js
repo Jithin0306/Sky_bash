@@ -75,8 +75,10 @@ export function isPointOnArena(x, y, margin = 0) {
 export function registerArenaScene() {
   scene("arena", () => {
     sound.playMusic("arena");
-    onKeyPress("m", () => {
-      sound.toggleMute();
+    sound.registerAudioKeyBindings();
+    onMousePress(() => {
+      const m = mousePos();
+      if (sound.handleAudioClick(m.x, m.y)) return;
     });
 
     // 1. Initialize the smooth 2.5D camera controller
@@ -1261,10 +1263,13 @@ function createNormalGameHUD(
           color: rgb(185, 198, 225),
         });
 
-        // 2. Bottom Controls Helper Pill (No square brackets!)
+        // 2. Separate Music & SFX Audio Mute Buttons at Top-Right
+        sound.drawAudioHUD();
+
+        // 3. Bottom Controls Helper Pill (No square brackets!)
         drawRect({
-          pos: vec2(cx - 310, GAME_CONFIG.HEIGHT - 34),
-          width: 620,
+          pos: vec2(cx - 325, GAME_CONFIG.HEIGHT - 34),
+          width: 650,
           height: 24,
           radius: 6,
           color: rgb(12, 16, 28),
@@ -1273,13 +1278,13 @@ function createNormalGameHUD(
         });
 
         drawText({
-          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump / Escape  |  E : Grab  |  J / K : Punch & Throw  |  ESC : Menu",
-          pos: vec2(cx - 296, GAME_CONFIG.HEIGHT - 27),
-          size: 10.5,
+          text: "WASD : Move  |  SHIFT : Sprint  |  SPACE : Jump  |  E : Grab  |  J/K : Attack  |  M : Music  |  X : SFX  |  ESC : Menu",
+          pos: vec2(cx - 312, GAME_CONFIG.HEIGHT - 27),
+          size: 10,
           color: rgb(205, 220, 245),
         });
 
-        // 3. PHASE 11 VICTORY / DEFEAT PODIUM OVERLAY WHEN MATCH ENDS!
+        // 4. PHASE 11 VICTORY / DEFEAT PODIUM OVERLAY WHEN MATCH ENDS!
         if (isMatchOver) {
           const playerWon = winner === "VOLT";
 

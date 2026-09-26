@@ -204,12 +204,8 @@ export function registerMultiplayerLobbyScene() {
       typedJoinCode = "";
     });
 
-    // Toggle Audio Mute (`M` key)
-    onKeyPress("m", () => {
-      if (!showNameModal && !showJoinCodeModal) {
-        sound.toggleMute();
-      }
-    });
+    // Audio hotkeys (M for music, X for SFX)
+    sound.registerAudioKeyBindings(() => !showNameModal && !showJoinCodeModal);
 
     // Start Match (`Space` or `Enter`)
     onKeyPress("space", () => {
@@ -295,11 +291,8 @@ export function registerMultiplayerLobbyScene() {
       const cx = GAME_CONFIG.WIDTH * 0.5;
       const cy = GAME_CONFIG.HEIGHT * 0.5;
 
-      // Audio Mute / Unmute Button at Top-Right
-      if (m.x >= GAME_CONFIG.WIDTH - 130 && m.x <= GAME_CONFIG.WIDTH - 10 && m.y >= 12 && m.y <= 42) {
-        sound.toggleMute();
-        return;
-      }
+      // Audio Mute / Unmute Buttons at Top-Right
+      if (sound.handleAudioClick(m.x, m.y)) return;
 
       if (showNameModal) {
         // Save Name button
@@ -405,23 +398,8 @@ export function registerMultiplayerLobbyScene() {
             opacity: 0.68,
           });
 
-          // Audio Mute / Unmute Button at Top-Right
-          const isMuted = sound.isMuted();
-          drawRect({
-            pos: vec2(GAME_CONFIG.WIDTH - 128, 14),
-            width: 114,
-            height: 24,
-            radius: 6,
-            color: rgb(12, 18, 32),
-            opacity: 0.88,
-            outline: { width: 1.5, color: isMuted ? rgb(255, 95, 95) : rgb(95, 235, 160) },
-          });
-          drawText({
-            text: isMuted ? "MUTED (M)" : "AUDIO ON (M)",
-            pos: vec2(GAME_CONFIG.WIDTH - 118, 20),
-            size: 10,
-            color: isMuted ? rgb(255, 145, 145) : rgb(125, 255, 195),
-          });
+          // Audio HUD (Separate Music & SFX Buttons at Top-Right)
+          sound.drawAudioHUD();
 
           // Main Lobby Card
           drawRect({

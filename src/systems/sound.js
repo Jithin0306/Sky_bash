@@ -23,13 +23,16 @@ class SoundManager {
     this.musicGain = null;
     this.noiseBuffer = null;
 
-    // Load initial mute state from localStorage if available
-    let storedMute = false;
+    // Load initial separate mute states from localStorage if available
+    let storedMusicMute = false;
+    let storedSfxMute = false;
     try {
-      storedMute = localStorage.getItem("sky_bash_muted") === "true";
+      storedMusicMute = localStorage.getItem("sky_bash_music_muted") === "true";
+      storedSfxMute = localStorage.getItem("sky_bash_sfx_muted") === "true";
     } catch (e) {}
 
-    this.isAudioMuted = storedMute;
+    this.isMusicMuted = storedMusicMute;
+    this.isSfxMuted = storedSfxMute;
     this.masterVolume = 0.85;
     this.sfxVolume = 0.85;
     this.musicVolume = 0.35;
@@ -68,20 +71,23 @@ class SoundManager {
 
       // Master output node
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(
-        this.isAudioMuted ? 0 : this.masterVolume,
-        this.ctx.currentTime
-      );
+      this.masterGain.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
       this.masterGain.connect(this.ctx.destination);
 
       // Dedicated SFX channel
       this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.setValueAtTime(this.sfxVolume, this.ctx.currentTime);
+      this.sfxGain.gain.setValueAtTime(
+        this.isSfxMuted ? 0 : this.sfxVolume,
+        this.ctx.currentTime
+      );
       this.sfxGain.connect(this.masterGain);
 
       // Dedicated Music channel
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.setValueAtTime(this.musicVolume, this.ctx.currentTime);
+      this.musicGain.gain.setValueAtTime(
+        this.isMusicMuted ? 0 : this.musicVolume,
+        this.ctx.currentTime
+      );
       this.musicGain.connect(this.masterGain);
 
       // Generate a 2-second white noise buffer for whooshes, impacts, snares & explosions
@@ -125,40 +131,168 @@ class SoundManager {
   }
 
   /**
-   * Toggles mute on/off. Persists state to localStorage.
+   * Toggles Music mute on/off. Persists state to localStorage.
    */
-  toggleMute() {
-    this.setMuted(!this.isAudioMuted);
-    return this.isAudioMuted;
+  toggleMusicMute() {
+    this.setMusicMuted(!this.isMusicMuted);
+    return this.isMusicMuted;
   }
 
-  setMuted(mute) {
-    this.isAudioMuted = Boolean(mute);
+  setMusicMuted(muted) {
+    this.isMusicMuted = Boolean(muted);
     try {
-      localStorage.setItem("sky_bash_muted", this.isAudioMuted ? "true" : "false");
+      localStorage.setItem("sky_bash_music_muted", this.isMusicMuted ? "true" : "false");
     } catch (e) {}
 
-    if (this.masterGain && this.ctx) {
+    if (this.musicGain && this.ctx) {
       const t = this.ctx.currentTime;
-      this.masterGain.gain.cancelScheduledValues(t);
-      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, t);
-      this.masterGain.gain.linearRampToValueAtTime(
-        this.isAudioMuted ? 0 : this.masterVolume,
+      this.musicGain.gain.cancelScheduledValues(t);
+      this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, t);
+      this.musicGain.gain.linearRampToValueAtTime(
+        this.isMusicMuted ? 0 : this.musicVolume,
         t + 0.05
       );
     }
 
-    if (!this.isAudioMuted) {
+    if (!this.isMusicMuted && this.currentTrack !== "none" && !this.isMusicPlaying) {
+      this._startMusicSequencer();
+    }
+
+    if (!this.isSfxMuted) {
       this.playUIClick();
     }
   }
 
+  /**
+   * Toggles Sound Effects (SFX) mute on/off. Persists state to localStorage.
+   */
+  toggleSfxMute() {
+    this.setSfxMuted(!this.isSfxMuted);
+    return this.isSfxMuted;
+  }
+
+  setSfxMuted(muted) {
+    this.isSfxMuted = Boolean(muted);
+    try {
+      localStorage.setItem("sky_bash_sfx_muted", this.isSfxMuted ? "true" : "false");
+    } catch (e) {}
+
+    if (this.sfxGain && this.ctx) {
+      const t = this.ctx.currentTime;
+      this.sfxGain.gain.cancelScheduledValues(t);
+      this.sfxGain.gain.setValueAtTime(this.sfxGain.gain.value, t);
+      this.sfxGain.gain.linearRampToValueAtTime(
+        this.isSfxMuted ? 0 : this.sfxVolume,
+        t + 0.05
+      );
+    }
+
+    if (!this.isSfxMuted) {
+      this.playUIClick();
+    }
+  }
+
+  // Master mute toggle convenience methods
+  toggleMute() {
+    const allMuted = this.isMusicMuted && this.isSfxMuted;
+    this.setMusicMuted(!allMuted);
+    this.setSfxMuted(!allMuted);
+    return !allMuted;
+  }
+
+  setMuted(muted) {
+    this.setMusicMuted(muted);
+    this.setSfxMuted(muted);
+  }
+
   isMuted() {
-    return this.isAudioMuted;
+    return this.isMusicMuted && this.isSfxMuted;
+  }
+
+  /**
+   * Renders the separate Music & SFX Mute buttons on the HUD (Top-Right Corner).
+   */
+  drawAudioHUD() {
+    const musicOff = this.isMusicMuted;
+    const sfxOff = this.isSfxMuted;
+
+    // 1. Music Toggle Button (Pos: 1058, 14, Width: 104, Height: 24)
+    drawRect({
+      pos: vec2(1058, 14),
+      width: 104,
+      height: 24,
+      radius: 6,
+      color: rgb(12, 18, 32),
+      opacity: 0.88,
+      outline: {
+        width: 1.5,
+        color: musicOff ? rgb(255, 95, 95) : rgb(95, 235, 160),
+      },
+    });
+    drawText({
+      text: musicOff ? "MUSIC: OFF (M)" : "MUSIC: ON (M)",
+      pos: vec2(1066, 20),
+      size: 9.5,
+      color: musicOff ? rgb(255, 145, 145) : rgb(125, 255, 195),
+    });
+
+    // 2. Sound Effects Toggle Button (Pos: 1168, 14, Width: 98, Height: 24)
+    drawRect({
+      pos: vec2(1168, 14),
+      width: 98,
+      height: 24,
+      radius: 6,
+      color: rgb(12, 18, 32),
+      opacity: 0.88,
+      outline: {
+        width: 1.5,
+        color: sfxOff ? rgb(255, 95, 95) : rgb(95, 235, 160),
+      },
+    });
+    drawText({
+      text: sfxOff ? "SFX: OFF (X)" : "SFX: ON (X)",
+      pos: vec2(1178, 20),
+      size: 9.5,
+      color: sfxOff ? rgb(255, 145, 145) : rgb(125, 255, 195),
+    });
+  }
+
+  /**
+   * Handles mouse clicks for the separate Music & SFX Mute buttons.
+   * Returns true if either button was clicked.
+   */
+  handleAudioClick(mx, my) {
+    // Music Button Click Bounds
+    if (mx >= 1058 && mx <= 1162 && my >= 12 && my <= 40) {
+      this.toggleMusicMute();
+      return true;
+    }
+    // SFX Button Click Bounds
+    if (mx >= 1168 && mx <= 1266 && my >= 12 && my <= 40) {
+      this.toggleSfxMute();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Registers global keyboard shortcuts:
+   * - `M` for toggling Music
+   * - `X` for toggling Sound Effects
+   */
+  registerAudioKeyBindings(canTrigger = null) {
+    onKeyPress("m", () => {
+      if (typeof canTrigger === "function" && !canTrigger()) return;
+      this.toggleMusicMute();
+    });
+    onKeyPress("x", () => {
+      if (typeof canTrigger === "function" && !canTrigger()) return;
+      this.toggleSfxMute();
+    });
   }
 
   _canPlay(id, minInterval = 0.04) {
-    if (this.isAudioMuted) return false;
+    if (this.isSfxMuted) return false;
     this.init();
     if (!this.ctx || this.ctx.state === "suspended") return false;
 
@@ -998,7 +1132,7 @@ class SoundManager {
 
   // --- ARENA BATTLE THEME (High-Energy Electronic Brawler Beat) ---
   _playArena16thStep(step, time) {
-    if (this.isAudioMuted) return;
+    if (this.isMusicMuted) return;
 
     // 1. Kick Drum (4-on-the-floor: beats 0, 4, 8, 12, 16, 20, 24, 28)
     if (step % 4 === 0) {
@@ -1044,7 +1178,7 @@ class SoundManager {
 
   // --- MENU TITLE THEME (Atmospheric Chill Synthwave) ---
   _playMenu16thStep(step, time) {
-    if (this.isAudioMuted) return;
+    if (this.isMusicMuted) return;
 
     // Gentle soft kick on beats 0 and 16
     if (step === 0 || step === 16) {
