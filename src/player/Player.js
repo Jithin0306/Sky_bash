@@ -84,6 +84,7 @@ export function createPlayer(
       ringOutCount: 0,
       hasTriggeredRingOutBanner: false,
       hitFlashTimer: 0,
+      squashFactor: 0,
       state: "idle",
       heldObject: null,
       nearestPickupCandidate: null,

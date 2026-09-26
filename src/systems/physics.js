@@ -201,8 +201,12 @@ function updateSingleObjectPhysics(obj, delta, camera, onRingOut) {
   }
 
   // 9. Decay visual squash & hit flash, and update 2.5D depth layer (`z = y`)
-  obj.squashFactor = lerp(obj.squashFactor, 0, Math.min(1, 10 * delta));
-  obj.hitFlashTimer = Math.max(0, obj.hitFlashTimer - delta);
+  if (typeof obj.squashFactor === "number" && !isNaN(obj.squashFactor)) {
+    obj.squashFactor = lerp(obj.squashFactor, 0, Math.min(1, 10 * delta));
+  } else {
+    obj.squashFactor = 0;
+  }
+  obj.hitFlashTimer = Math.max(0, (obj.hitFlashTimer || 0) - delta);
   updateDepthSort(obj);
 }
 

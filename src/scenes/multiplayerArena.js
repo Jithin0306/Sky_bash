@@ -149,7 +149,6 @@ export function registerMultiplayerArenaScene() {
       }
 
       fighters.push(f);
-      physicsObjects.push(f);
     }
 
     if (!localFighter) {
@@ -429,9 +428,18 @@ export function registerMultiplayerArenaScene() {
       if (isOnline) {
         for (const f of fighters) {
           if (f.isRemoteHuman && !f.isEliminated && !f.isCarried) {
-            f.pos.x = lerp(f.pos.x, f.netTargetPos.x, Math.min(1, delta * 14));
-            f.pos.y = lerp(f.pos.y, f.netTargetPos.y, Math.min(1, delta * 14));
-            f.zHeight = lerp(f.zHeight, f.netTargetZ, Math.min(1, delta * 14));
+            const tx = f.netTargetPos?.x;
+            const ty = f.netTargetPos?.y;
+            const tz = f.netTargetZ;
+            if (typeof tx === "number" && !isNaN(tx) && typeof f.pos.x === "number") {
+              f.pos.x = lerp(f.pos.x, tx, Math.min(1, delta * 14));
+            }
+            if (typeof ty === "number" && !isNaN(ty) && typeof f.pos.y === "number") {
+              f.pos.y = lerp(f.pos.y, ty, Math.min(1, delta * 14));
+            }
+            if (typeof tz === "number" && !isNaN(tz) && typeof f.zHeight === "number") {
+              f.zHeight = lerp(f.zHeight, tz, Math.min(1, delta * 14));
+            }
           }
         }
       }
