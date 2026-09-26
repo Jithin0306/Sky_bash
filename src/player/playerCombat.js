@@ -166,6 +166,23 @@ export function findNearestPickupCandidate(player) {
     }
   }
 
+  // Hysteresis stickiness: if the player already has a valid candidate within reach,
+  // require an alternative candidate to be at least 14px closer to avoid target flickering!
+  const currentCandidate = player.nearestPickupCandidate;
+  if (
+    currentCandidate &&
+    bestObj &&
+    bestObj !== currentCandidate &&
+    candidates.includes(currentCandidate)
+  ) {
+    const curDx = currentCandidate.pos.x - reachOriginX;
+    const curDy = (currentCandidate.pos.y - reachOriginY) / ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+    const curDist = Math.hypot(curDx, curDy);
+    if (curDist <= COMBAT_CONFIG.PICKUP_RANGE && bestDist > curDist - 14) {
+      return currentCandidate;
+    }
+  }
+
   return bestObj;
 }
 

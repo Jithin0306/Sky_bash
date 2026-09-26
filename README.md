@@ -1,44 +1,82 @@
-# Sky_bash — KAPLAY 2.5D Circular Arena Prototype
+# Sky_bash — 2.5D Serverless Multiplayer Physics Arena
 
-A modular, learning-first **2.5D multiplayer-style physics & arena fighting game prototype** built with **KAPLAY (JavaScript ES Modules)**.
+[![Play Live](https://img.shields.io/badge/Play%20Live-GitHub%20Pages-brightgreen?style=for-the-badge&logo=github)](https://jithin0306.github.io/Sky_bash/)
+
+🎮 **Play Live Now on GitHub Pages**: **[https://jithin0306.github.io/Sky_bash/](https://jithin0306.github.io/Sky_bash/)**
+
+A fast-paced, 100% serverless **2.5D multiplayer physics arena brawler** built with **KAPLAY** and **Trystero (WebRTC P2P)** using vanilla JavaScript ES Modules (zero build tools, zero bundlers, zero external server costs).
 
 ---
 
-## ✨ Features Implemented (Milestones 1 – 6)
+## 🕹️ Game Modes
 
-- **Milestone 1 — 2.5D Circular Arena & Camera System**:
-  - Elliptical 2.5D perspective projection (`PERSPECTIVE_Y_SCALE = 0.64`) with a sunlit sandstone & golden-bronze floating island, 3D underbelly cliffs, pulsing perimeter beacons, and smooth clamped camera tracking + impact shake.
-- **Milestone 2 — Original Character ("Volt") & 2.5D Movement**:
-  - Articulated 2-segment legs, flame-coral brawler boots, cobalt tunic, flowing scarf, floating golden boxing gloves, and instant arcade turning.
-- **Milestone 3 — Jump, Gravity, Ground Detection & Funny Cliff Fall**:
-  - Independent vertical height axis (`zHeight`, `velZ`) with dynamic ground shadows and a hilarious cartoon cliff-fall animation (`"AAAH!!"`, windmill arms, pedaling legs, googly visor eyes, and North-edge behind-island occlusion).
-- **Milestone 4 — 2.5D Depth Sorting (`depth = y`) & Perspective Scaling**:
-  - Dynamic per-frame `z = Math.round(pos.y)` depth sorting, $\pm 8\%$ depth perspective scaling, and solid 3D footprint collisions with Crystal Orb Stands & a Sparring Target Dummy.
-- **Milestone 5 — Melee Punch System**:
-  - 1-2 alternating left/right boxing combo, active hit window, `480 px/s` knockback, `45ms` hit-stop freeze frames, and compact comic-book `"POW! / BAM! / WHAM!"` & `"KO! RING OUT!"` callouts.
-- **Milestone 6 — 2.5D Physics Objects**:
-  - Modular physics objects (`Supply Crate`, `Brawler Sphere / Ball`, `Iron Heavy Box`) with configurable `mass`, `friction`, `bounce`, `throwForce`, and `damage`, plus Object-vs-Object elastic billiard collisions and Player-vs-Object pushing.
+### 🌐 Serverless P2P Multiplayer (Powered by Trystero & WebRTC)
+Connect instantly with friends across the globe directly in the browser—no servers or accounts required!
+- **1 vs 1 Duel**: Head-to-head fast combat.
+- **2 vs 2 Team Brawl**: Blue Team vs Orange Team cooperative throwdowns.
+- **Free-For-All (FFA)**: 3 to 6 players competing in an all-out chaotic ring-out battle.
+- **Custom Player Names**: Choose your own display name (`N` key or menu button) which syncs to all connected peers.
+- **Shareable Room Codes**: Create a room, share the 4-to-6 character code, and your friends join your peer mesh in seconds.
+- **Host-Authoritative Synchronized Drops & Physics**: Supply crates, brawler spheres, and heavy boxes drop periodically at identical positions with matching contents across every player's screen without physics jitter.
+
+### 🤖 Single-Player & Practice Arena
+- Battle against reactive AI bot brawlers with auto-patrolling, jumping, and punching.
+- Test object pickup, throwing, punching, and hilarious cartoon cliff falls.
 
 ---
 
 ## 🎮 Controls
 
-| Action | Key / Mouse |
+| Action | Keyboard / Mouse |
 | :--- | :--- |
 | **Move / Air-Steer** | `W` `A` `S` `D` or `Arrow Keys` |
+| **Sprint** | Hold `Shift` |
 | **Jump** | `Space` |
 | **Punch (1-2 Combo)** | `Left Mouse Click` or `J` |
-| **Drop Fresh Physics Objects** | `R` |
-| **Test Camera Shake / Zoom** | `C` / `Z` |
+| **Pick Up / Place Down** | `E` |
+| **Throw Object / Bomb** | `K` |
+| **Change Player Name** | `N` |
+| **Spawn Physics Object** | `R` (in Practice mode) |
+| **Test Camera Zoom / Shake** | `Z` / `C` |
 
 ---
 
-## 🚀 How to Run Locally
+## ✨ Key Features & Architecture
 
-Because this project uses standard browser ES Modules + an `<script type="importmap">`, no bundler or build step is needed!
+- **Visual Clarity & High-DPI Rendering**:
+  - Native pixel-density rendering (`pixelDensity: Math.min(window.devicePixelRatio, 2)`) ensures crisp, sharp text and UI on high-resolution, Retina, and Windows scaling monitors.
+  - Mini animated neon tracking arrow and `"YOU"` indicator badge above your character's head to never lose your fighter in multi-player brawls.
+  - High-contrast, glowing overhead player name badges with distinct colors (Gold for local player, Cyan for rivals, Orange for bots).
+
+- **2.5D Physics & Arena Mechanics**:
+  - Elliptical perspective projection (`PERSPECTIVE_Y_SCALE = 0.64`) with floating sunlit sky island, perimeter beacons, and depth sorting (`depth = y`).
+  - Independent `zHeight` and vertical velocity with dynamic ground shadows and hilarious cartoon cliff-fall animations (`"AAAH!!"`, pedaling legs, windmill arms).
+  - Modular physics objects (Supply Crates, Brawler Spheres, Heavy Iron Boxes) with elastic collisions, mass, friction, and throw dynamics.
+  - Client-side prediction with Host-authoritative snapshot interpolation, eliminating object glitching/jittering when walking into items.
+
+- **Zero-Build Vanilla Web Stack**:
+  - Powered by KAPLAY v3001 and Trystero v0.20 via native browser `<script type="importmap">`.
+  - Runs directly on any static web host (GitHub Pages, Vercel, Netlify, or local static server).
+
+---
+
+## 🚀 Running Locally
+
+Because this project uses standard browser ES Modules and import maps, no compilation or npm build step is required!
+
+Simply start any static file server from the root directory:
 
 ```bash
+# Using Node.js npx serve
 npx serve .
+
+# Or using Python 3
+python -m http.server 8000
 ```
 
-Then open the local URL shown in your terminal (e.g., `http://localhost:3000`).
+Then visit `http://localhost:3000` (or `http://localhost:8000`) in your browser.
+
+---
+
+## 📜 License
+MIT

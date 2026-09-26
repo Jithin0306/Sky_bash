@@ -85,6 +85,7 @@ export function registerDevTestScene() {
         camera,
       }
     );
+    player.isLocalPlayer = true;
 
     const enemyBot = createPlayer(
       ARENA_CONFIG.CENTER_X + 145,

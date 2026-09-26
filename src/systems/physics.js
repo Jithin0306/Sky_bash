@@ -517,7 +517,12 @@ export function resolveFighterToFighterCollisions(fighterList) {
 /**
  * Resolves Fighter-vs-Object pushing AND Thrown Projectile-vs-Fighter impacts!
  */
-export function resolvePlayerToObjectInteractions(player, objects, camera = null) {
+export function resolvePlayerToObjectInteractions(
+  player,
+  objects,
+  camera = null,
+  isGuestClient = false
+) {
   for (const obj of objects) {
     if (obj.isCarried || obj.isFallingInVoid || obj.isExplodedCooldown || obj.isWaitingToDrop) continue;
 
@@ -623,7 +628,33 @@ export function resolvePlayerToObjectInteractions(player, objects, camera = null
         continue;
       }
 
-      // Standard grounded pushing interaction
+      // Guest Client Optimization: Only push the local player out of the object footprint.
+      // Do NOT modify obj.pos or obj.velocity locally on Guest, preventing fighting against
+      // Host-authoritative 15Hz snapshots (which causes object glitching/jitter)!
+      if (isGuestClient) {
+        player.pos.x -= nx * overlap;
+        player.pos.y -= ny * overlap * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+        continue;
+      }
+
+      // On Host for a Remote Human player: Remote player position is interpolated from network.
+      // Push the object authoritatively, but do not fight against the remote player's stream!
+      if (player.isRemoteHuman) {
+        obj.pos.x += nx * overlap;
+        obj.pos.y += ny * overlap * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+        const pushSpeed = Math.hypot(
+          player.velocity.x,
+          player.velocity.y / ARENA_CONFIG.PERSPECTIVE_Y_SCALE
+        );
+        if (pushSpeed > 15) {
+          const transfer = (pushSpeed * 0.36) / obj.mass;
+          obj.velocity.x = nx * transfer;
+          obj.velocity.y = ny * transfer * ARENA_CONFIG.PERSPECTIVE_Y_SCALE;
+        }
+        continue;
+      }
+
+      // Standard grounded pushing interaction (Host local player or AI bots)
       const objectYield = clamp(1 / (0.6 + obj.mass), 0.22, 0.78);
       const playerYield = 1 - objectYield;
 

@@ -263,35 +263,49 @@ export function registerMenuScene() {
             },
           });
 
-          // Game Title & Subtitle
+          // Game Title & Subtitle with high-contrast shadow
           drawText({
             text: "SKY BASH : 2.5D ARENA BRAWL",
-            pos: vec2(cx - 196, cy - 176),
-            size: 24,
-            color: rgb(95, 235, 255),
+            pos: vec2(cx - 280, cy - 179),
+            width: 560,
+            align: "center",
+            size: 28,
+            color: rgb(10, 16, 32),
+          });
+          drawText({
+            text: "SKY BASH : 2.5D ARENA BRAWL",
+            pos: vec2(cx - 280, cy - 181),
+            width: 560,
+            align: "center",
+            size: 28,
+            color: rgb(105, 245, 255),
           });
 
           drawText({
             text: "1v1 DUEL  |  2v2 TEAMS  |  UP TO 6-PLAYER FREE-FOR-ALL CHAOS",
-            pos: vec2(cx - 208, cy - 142),
-            size: 11.5,
-            color: rgb(195, 212, 240),
+            pos: vec2(cx - 280, cy - 144),
+            width: 560,
+            align: "center",
+            size: 13,
+            color: rgb(215, 232, 255),
           });
 
           // Custom Player Name Badge (Click or Press N to Edit!)
           drawRect({
-            pos: vec2(cx - 175, cy - 102),
-            width: 350,
-            height: 30,
+            pos: vec2(cx - 190, cy - 105),
+            width: 380,
+            height: 32,
             radius: 8,
-            color: rgb(22, 34, 58),
-            outline: { width: 1.5, color: rgb(255, 220, 85) },
+            color: rgb(20, 30, 52),
+            outline: { width: 1.8, color: rgb(255, 220, 75) },
           });
           drawText({
             text: `PLAYER NAME: ${currentName}   (PRESS N OR CLICK TO EDIT)`,
-            pos: vec2(cx - 152, cy - 92),
-            size: 11,
-            color: rgb(255, 232, 105),
+            pos: vec2(cx - 190, cy - 96),
+            width: 380,
+            align: "center",
+            size: 13,
+            color: rgb(255, 235, 110),
           });
 
           // Button 1: SINGLE PLAYER (VS AI BOTS)
@@ -303,22 +317,26 @@ export function registerMenuScene() {
           drawRect({
             pos: vec2(-195, -28),
             width: 390,
-            height: 56,
+            height: 58,
             radius: 10,
             color: rgb(28, 148, 212),
-            outline: { width: 2.5, color: rgb(155, 245, 255) },
+            outline: { width: 2.5, color: rgb(165, 245, 255) },
           });
 
           drawText({
             text: "SINGLE PLAYER — VS AI BOTS (ENTER / CLICK)",
-            pos: vec2(-168, -14),
-            size: 14,
+            pos: vec2(-195, -16),
+            width: 390,
+            align: "center",
+            size: 16,
             color: rgb(255, 255, 255),
           });
           drawText({
             text: "Play 1v1 Duel, 2v2 Teams, or 3-6P Free-For-All vs AI Bots",
-            pos: vec2(-162, 7),
-            size: 10.5,
+            pos: vec2(-195, 8),
+            width: 390,
+            align: "center",
+            size: 12,
             color: rgb(215, 248, 255),
           });
           popTransform();
@@ -327,7 +345,7 @@ export function registerMenuScene() {
           drawRect({
             pos: vec2(cx - 195, cy + 14),
             width: 390,
-            height: 56,
+            height: 58,
             radius: 10,
             color: rgb(22, 138, 98),
             outline: { width: 2.5, color: rgb(115, 255, 195) },
@@ -335,14 +353,18 @@ export function registerMenuScene() {
 
           drawText({
             text: "ONLINE MULTIPLAYER — P2P ROOMS (PRESS M)",
-            pos: vec2(cx - 168, cy + 28),
-            size: 14,
+            pos: vec2(cx - 195, cy + 26),
+            width: 390,
+            align: "center",
+            size: 16,
             color: rgb(255, 255, 255),
           });
           drawText({
             text: "1v1 Online, 2v2 Teams & Up to 6P Free-For-All (4-Digit Room Code)",
-            pos: vec2(cx - 174, cy + 49),
-            size: 10,
+            pos: vec2(cx - 195, cy + 50),
+            width: 390,
+            align: "center",
+            size: 12,
             color: rgb(215, 255, 235),
           });
 
@@ -350,7 +372,7 @@ export function registerMenuScene() {
           drawRect({
             pos: vec2(cx - 195, cy + 88),
             width: 390,
-            height: 50,
+            height: 52,
             radius: 10,
             color: devUnlocked ? rgb(18, 85, 58) : rgb(28, 34, 54),
             outline: {
@@ -364,16 +386,20 @@ export function registerMenuScene() {
             : "DEVELOPER TEST AREA — LOCKED (PRESS F2)";
           drawText({
             text: devBtnTitle,
-            pos: vec2(cx - 150, cy + 100),
-            size: 13,
+            pos: vec2(cx - 195, cy + 98),
+            width: 390,
+            align: "center",
+            size: 14,
             color: devUnlocked ? rgb(110, 255, 175) : rgb(255, 215, 85),
           });
 
           drawText({
             text: "Restricted Element Spawner, Target Dummy & AI Debug Tools",
-            pos: vec2(cx - 152, cy + 119),
-            size: 10,
-            color: rgb(175, 192, 220),
+            pos: vec2(cx - 195, cy + 120),
+            width: 390,
+            align: "center",
+            size: 11,
+            color: rgb(185, 202, 230),
           });
 
           // Modal Overlay when Custom Player Name Editor is open (Key N / Click)
@@ -389,15 +415,19 @@ export function registerMenuScene() {
             });
             drawText({
               text: "SET YOUR CUSTOM PLAYER NAME",
-              pos: vec2(cx - 142, cy - 86),
-              size: 15,
+              pos: vec2(cx - 215, cy - 86),
+              width: 430,
+              align: "center",
+              size: 16,
               color: rgb(255, 230, 95),
             });
             drawText({
               text: "Type up to 12 letters/numbers and press ENTER to save:",
-              pos: vec2(cx - 165, cy - 56),
-              size: 11,
-              color: rgb(205, 225, 248),
+              pos: vec2(cx - 215, cy - 56),
+              width: 430,
+              align: "center",
+              size: 13,
+              color: rgb(215, 232, 255),
             });
 
             drawRect({
@@ -412,38 +442,44 @@ export function registerMenuScene() {
             const cursorBlink = Math.floor(t * 2.5) % 2 === 0 ? "_" : "";
             drawText({
               text: `${typedPlayerName}${cursorBlink}`,
-              pos: vec2(cx - 145, cy - 7),
-              size: 18,
+              pos: vec2(cx - 165, cy - 9),
+              width: 330,
+              align: "center",
+              size: 20,
               color: rgb(135, 255, 215),
             });
 
             drawRect({
               pos: vec2(cx - 150, cy + 72),
               width: 140,
-              height: 34,
+              height: 36,
               radius: 7,
               color: rgb(28, 155, 105),
               outline: { width: 1.5, color: rgb(135, 255, 205) },
             });
             drawText({
               text: "ENTER : SAVE",
-              pos: vec2(cx - 122, cy + 83),
-              size: 11.5,
+              pos: vec2(cx - 150, cy + 82),
+              width: 140,
+              align: "center",
+              size: 13,
               color: rgb(255, 255, 255),
             });
 
             drawRect({
               pos: vec2(cx + 10, cy + 72),
               width: 140,
-              height: 34,
+              height: 36,
               radius: 7,
               color: rgb(42, 48, 72),
               outline: { width: 1.5, color: rgb(145, 165, 205) },
             });
             drawText({
               text: "ESC : CANCEL",
-              pos: vec2(cx + 36, cy + 83),
-              size: 11.5,
+              pos: vec2(cx + 10, cy + 82),
+              width: 140,
+              align: "center",
+              size: 13,
               color: rgb(225, 235, 255),
             });
           }
@@ -462,16 +498,20 @@ export function registerMenuScene() {
 
             drawText({
               text: "DEVELOPER SECURITY CLEARANCE",
-              pos: vec2(cx - 142, cy - 90),
-              size: 15,
+              pos: vec2(cx - 215, cy - 90),
+              width: 430,
+              align: "center",
+              size: 16,
               color: rgb(255, 220, 75),
             });
 
             drawText({
               text: "Only Developers can access the Element Test Sandbox.",
-              pos: vec2(cx - 165, cy - 62),
-              size: 11.5,
-              color: rgb(210, 222, 245),
+              pos: vec2(cx - 215, cy - 62),
+              width: 430,
+              align: "center",
+              size: 13,
+              color: rgb(215, 228, 250),
             });
 
             // 4-Digit PIN Boxes
@@ -495,8 +535,10 @@ export function registerMenuScene() {
               if (hasChar) {
                 drawText({
                   text: enteredPin[i],
-                  pos: vec2(bx + 14, by + 13),
-                  size: 20,
+                  pos: vec2(bx, by + 12),
+                  width: 42,
+                  align: "center",
+                  size: 22,
                   color: rgb(110, 255, 195),
                 });
               }
@@ -504,8 +546,10 @@ export function registerMenuScene() {
 
             drawText({
               text: statusMessage,
-              pos: vec2(cx - 158, cy + 40),
-              size: 11,
+              pos: vec2(cx - 215, cy + 40),
+              width: 430,
+              align: "center",
+              size: 13,
               color: rgb(...statusColor),
             });
 
@@ -513,15 +557,17 @@ export function registerMenuScene() {
             drawRect({
               pos: vec2(cx - 75, cy + 88),
               width: 150,
-              height: 32,
+              height: 34,
               radius: 7,
               color: rgb(42, 48, 72),
               outline: { width: 1.5, color: rgb(145, 165, 205) },
             });
             drawText({
               text: "ESC : CANCEL",
-              pos: vec2(cx - 44, cy + 98),
-              size: 11.5,
+              pos: vec2(cx - 75, cy + 97),
+              width: 150,
+              align: "center",
+              size: 13,
               color: rgb(225, 235, 255),
             });
           }

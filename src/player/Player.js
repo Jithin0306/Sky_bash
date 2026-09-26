@@ -982,13 +982,94 @@ function drawCharacterVisuals(player, C, isRenderedOverhead = false) {
       });
     }
 
-    // Fighter name label ("VOLT" or "PYRO")
-    drawText({
-      text: player.displayName || "VOLT",
-      pos: vec2(-14, tagBaseY - 10),
-      size: 9,
-      color: player.isAI ? rgb(255, 175, 145) : rgb(155, 240, 255),
+    // 3. Stylish Overhead Fighter Name Badge Pill
+    const nameStr = String(player.displayName || player.playerName || "VOLT").toUpperCase();
+    const namePillWidth = Math.max(48, nameStr.length * 7.5 + 14);
+    const isSelf = Boolean(player.isLocalPlayer);
+
+    // Dynamic contrast colors: Golden-cyan for local player, vivid neon for remote humans, coral for AI
+    const nameBorderColor = isSelf
+      ? rgb(255, 220, 65)
+      : player.isAI
+      ? rgb(245, 125, 95)
+      : rgb(85, 235, 255);
+
+    const nameTextColor = isSelf
+      ? rgb(255, 245, 140)
+      : player.isAI
+      ? rgb(255, 220, 210)
+      : rgb(225, 250, 255);
+
+    const namePlateY = tagBaseY - 17;
+
+    // Dark high-contrast pill backdrop
+    drawRect({
+      pos: vec2(-namePillWidth * 0.5, namePlateY),
+      width: namePillWidth,
+      height: 14,
+      radius: 4,
+      color: rgb(12, 16, 28),
+      opacity: 0.94,
+      outline: {
+        width: isSelf ? 1.6 : 1.2,
+        color: nameBorderColor,
+      },
     });
+
+    // Centered crisp fighter name text
+    drawText({
+      text: nameStr,
+      pos: vec2(-namePillWidth * 0.5, namePlateY + 1.5),
+      width: namePillWidth,
+      align: "center",
+      size: 9.5,
+      color: nameTextColor,
+    });
+
+    // 4. Mini Bouncing Neon Arrow Mark Above Player Head (Local Player Tracking)
+    if (isSelf) {
+      const bob = Math.sin(time() * 8.5) * 3;
+      const arrowTipY = namePlateY - 4 + bob;
+
+      // Tiny golden "YOU" badge
+      drawRect({
+        pos: vec2(-12, arrowTipY - 17),
+        width: 24,
+        height: 10,
+        radius: 3,
+        color: rgb(255, 220, 55),
+        outline: { width: 1.2, color: rgb(16, 20, 32) },
+      });
+      drawText({
+        text: "YOU",
+        pos: vec2(-12, arrowTipY - 16),
+        width: 24,
+        align: "center",
+        size: 7.5,
+        color: rgb(16, 20, 32),
+      });
+
+      // Downward pointer arrow triangle pointing right at Volt's head
+      drawPolygon({
+        pts: [
+          vec2(-5, arrowTipY - 6),
+          vec2(5, arrowTipY - 6),
+          vec2(0, arrowTipY),
+        ],
+        color: rgb(255, 220, 55),
+        outline: { width: 1.4, color: rgb(16, 20, 32) },
+      });
+    } else if (!player.isAI) {
+      // Subtle small colored indicator triangle for remote human opponents
+      drawPolygon({
+        pts: [
+          vec2(-3.5, namePlateY - 4),
+          vec2(3.5, namePlateY - 4),
+          vec2(0, namePlateY - 0.5),
+        ],
+        color: nameBorderColor,
+      });
+    }
   }
 
   popTransform();

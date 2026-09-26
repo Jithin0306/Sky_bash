@@ -170,6 +170,7 @@ export function registerMultiplayerArenaScene() {
 
       if (isLocalHuman) {
         localFighter = f;
+        f.isLocalPlayer = true;
       }
 
       fighters.push(f);
@@ -177,6 +178,7 @@ export function registerMultiplayerArenaScene() {
 
     if (!localFighter) {
       localFighter = fighters[0];
+      localFighter.isLocalPlayer = true;
     }
 
     // Create Autonomous AI Controllers for all Bot Fighters
@@ -801,8 +803,8 @@ export function registerMultiplayerArenaScene() {
 
         // Guest fighter-to-fighter body collisions
         resolveFighterToFighterCollisions(fighters);
-        // Guest local fighter pushing interactions with objects for tactile collision feel
-        resolvePlayerToObjectInteractions(localFighter, physicsObjects, camera);
+        // Guest local fighter pushing interactions with objects for tactile collision feel (without jittering!)
+        resolvePlayerToObjectInteractions(localFighter, physicsObjects, camera, true);
       }
 
       // 7. Ring-Outs, 0% HP KOs, Stock Life Deduction & Sky Respawns

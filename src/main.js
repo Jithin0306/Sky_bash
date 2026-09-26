@@ -25,6 +25,7 @@ kaplay({
   background: GAME_CONFIG.BG_COLOR,
   letterbox: true, // Preserves 16:9 aspect ratio when the browser window resizes
   crisp: false,    // Smooth anti-aliased rendering for clean vector/2.5D shapes
+  pixelDensity: Math.min(window.devicePixelRatio || 1, 2), // High-DPI crisp text rendering
 });
 
 // 2. Register all game scenes:

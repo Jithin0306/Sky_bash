@@ -41,7 +41,9 @@ export function updateDepthSort(entity) {
   // Since the arena floor is at z = -50 and ground Y ranges from ~140 to ~610,
   // every entity on the surface has a positive z (140..610) and sorts accurately
   // against every other player, pillar, crate, and ball!
-  entity.z = Math.round(entity.pos.y);
+  // Adding a micro-offset for fighters ensures clean sorting without z-fighting flicker.
+  const subLayer = entity.isPlayer || entity.objectType === "fighter" ? 0.2 : 0.0;
+  entity.z = Math.round(entity.pos.y) + subLayer;
 }
 
 /**
