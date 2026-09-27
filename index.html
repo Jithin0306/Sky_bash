@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Sky_bash — 2.5D Arena Prototype</title>
   <style>
     /* Reset browser margins and center the KAPLAY game canvas */
@@ -43,7 +46,7 @@
   </script>
 </head>
 <body>
-  <!-- Entry point for our modular game architecture -->
-  <script type="module" src="./src/main.js"></script>
+  <!-- Entry point for our modular game architecture (cache-busted) -->
+  <script type="module" src="./src/main.js?v=2.5.0"></script>
 </body>
 </html>

@@ -9,11 +9,11 @@
 
 import kaplay from "kaplay";
 import { GAME_CONFIG } from "./config/gameConfig.js";
-import { registerMenuScene } from "./scenes/menu.js";
-import { registerArenaScene } from "./scenes/arena.js";
-import { registerDevTestScene, isDevAccessUnlocked } from "./scenes/devTest.js";
-import { registerMultiplayerLobbyScene } from "./scenes/multiplayerLobby.js";
-import { registerMultiplayerArenaScene } from "./scenes/multiplayerArena.js";
+import { registerMenuScene } from "./scenes/menu.js?v=2.5.0";
+import { registerArenaScene } from "./scenes/arena.js?v=2.5.0";
+import { registerDevTestScene, isDevAccessUnlocked } from "./scenes/devTest.js?v=2.5.0";
+import { registerMultiplayerLobbyScene } from "./scenes/multiplayerLobby.js?v=2.5.0";
+import { registerMultiplayerArenaScene } from "./scenes/multiplayerArena.js?v=2.5.0";
 
 // 1. Initialize KAPLAY
 // By default, kaplay() attaches its helper functions (scene, add, pos, vec2,
