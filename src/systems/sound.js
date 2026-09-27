@@ -211,10 +211,19 @@ class SoundManager {
 
   /**
    * Renders the separate Music & SFX Mute buttons on the HUD (Top-Right Corner).
+   * Sleek, compact utility controls with live status indicators and hover feedback.
    */
   drawAudioHUD() {
     const musicOff = this.isMusicMuted;
     const sfxOff = this.isSfxMuted;
+
+    let mHover = false;
+    let xHover = false;
+    try {
+      const m = mousePos();
+      mHover = m.x >= 1058 && m.x <= 1162 && m.y >= 12 && m.y <= 40;
+      xHover = m.x >= 1168 && m.x <= 1266 && m.y >= 12 && m.y <= 40;
+    } catch (e) {}
 
     // 1. Music Toggle Button (Pos: 1058, 14, Width: 104, Height: 24)
     drawRect({
@@ -222,18 +231,18 @@ class SoundManager {
       width: 104,
       height: 24,
       radius: 6,
-      color: rgb(12, 18, 32),
-      opacity: 0.88,
+      color: mHover ? rgb(18, 28, 48) : rgb(12, 18, 32),
+      opacity: 0.92,
       outline: {
-        width: 1.5,
-        color: musicOff ? rgb(255, 95, 95) : rgb(95, 235, 160),
+        width: mHover ? 2 : 1.5,
+        color: musicOff ? (mHover ? rgb(255, 120, 120) : rgb(239, 68, 68)) : (mHover ? rgb(125, 255, 195) : rgb(52, 211, 153)),
       },
     });
     drawText({
-      text: musicOff ? "MUSIC: OFF (M)" : "MUSIC: ON (M)",
+      text: musicOff ? "♫ MUSIC  OFF (M)" : "♫ MUSIC  ON (M)",
       pos: vec2(1066, 20),
       size: 9.5,
-      color: musicOff ? rgb(255, 145, 145) : rgb(125, 255, 195),
+      color: musicOff ? rgb(255, 155, 155) : rgb(145, 255, 210),
     });
 
     // 2. Sound Effects Toggle Button (Pos: 1168, 14, Width: 98, Height: 24)
@@ -242,18 +251,18 @@ class SoundManager {
       width: 98,
       height: 24,
       radius: 6,
-      color: rgb(12, 18, 32),
-      opacity: 0.88,
+      color: xHover ? rgb(18, 28, 48) : rgb(12, 18, 32),
+      opacity: 0.92,
       outline: {
-        width: 1.5,
-        color: sfxOff ? rgb(255, 95, 95) : rgb(95, 235, 160),
+        width: xHover ? 2 : 1.5,
+        color: sfxOff ? (xHover ? rgb(255, 120, 120) : rgb(239, 68, 68)) : (xHover ? rgb(125, 255, 195) : rgb(52, 211, 153)),
       },
     });
     drawText({
-      text: sfxOff ? "SFX: OFF (X)" : "SFX: ON (X)",
+      text: sfxOff ? "◉ SFX  OFF (X)" : "◉ SFX  ON (X)",
       pos: vec2(1178, 20),
       size: 9.5,
-      color: sfxOff ? rgb(255, 145, 145) : rgb(125, 255, 195),
+      color: sfxOff ? rgb(255, 155, 155) : rgb(145, 255, 210),
     });
   }
 
