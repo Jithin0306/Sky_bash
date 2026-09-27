@@ -3,15 +3,12 @@
 // ============================================================================
 // Pre-Match Mode & Room Setup Scene ("multiplayerLobby"):
 // Supports BOTH:
-// 1. SINGLE PLAYER (VS AI BOTS):
-//    - 1v1 Duel (2 Fighters)
-//    - 2v2 Team Battle (4 Fighters: Team Blue vs Team Red with AI Teammate!)
-//    - Free-For-All Chaos (3, 4, 5, or 6 Fighters — 1v1v1 up to 6P, No Teams!)
+// 1. SINGLE PLAYER (VS AI BOTS): 1v1, 2v2 Teams, or 3-6P Free-For-All
 // 2. ONLINE MULTIPLAYER (TRYSTERO SERVERLESS P2P):
-//    - Custom Player Name Editor (`N` key or click Name Box) synced live!
-//    - Host a 4-Digit Room Code or Join a Friend's 4-Digit Code (or ?room=XXXX URL)
-//    - 1v1 Online, 2v2 Team Battle Online, or 3-to-6 Player Free-For-All Online
-//    - Optional "Fill Empty Slots with AI Bots" toggle (`B` key)
+//    - Custom Player Name Editor (N key / click)
+//    - Host 4-digit code or join friend's code (J key / click)
+//    - 1-Click invite link copy (C key / click)
+//    - AI Bot Fill toggle (B key)
 // ============================================================================
 
 import { GAME_CONFIG, CAMERA_CONFIG } from "../config/gameConfig.js";
@@ -33,9 +30,12 @@ import {
 } from "../network/trysteroManager.js";
 import { sound } from "../systems/sound.js";
 
-/**
- * Registers the "multiplayerLobby" scene with KAPLAY.
- */
+const MODES = [
+  { id: "1v1", key: "1", title: "1 vs 1 DUEL", sub: "2 Fighters Head-to-Head", xOff: -310 },
+  { id: "2v2", key: "2", title: "2 vs 2 TEAMS", sub: "Team Blue vs Team Red", xOff: -95 },
+  { id: "ffa", key: "3", title: "FREE-FOR-ALL", sub: "1v1v1 up to 6 Players!", xOff: 120 },
+];
+
 export function registerMultiplayerLobbyScene() {
   scene("multiplayerLobby", (params = {}) => {
     sound.playMusic("menu");
@@ -45,29 +45,25 @@ export function registerMultiplayerLobbyScene() {
 
     const camera = createArenaCamera();
     camera.setZoom(CAMERA_CONFIG.DEFAULT_ZOOM);
-
     createAmbientBackground();
     createFloatingArena();
 
-    let selectedMode = params.mode || "1v1"; // "1v1" | "2v2" | "ffa"
-    let ffaPlayerCount = 4;                  // 3, 4, 5, or 6 fighters in FFA
+    let selectedMode = params.mode || "1v1";
+    let ffaPlayerCount = 4;
     let fillBotsInOnline = true;
     let playerTeam = "blue";
-
     let showJoinCodeModal = false;
     let typedJoinCode = "";
-
     let showNameModal = false;
     let typedPlayerName = getLocalPlayerName();
-
     let feedbackBanner = "";
     let isTransitioningToArena = false;
 
-    function safeGoToArena() {
+    const safeGoToArena = () => {
       if (isTransitioningToArena) return;
       isTransitioningToArena = true;
       go("multiplayerArena");
-    }
+    };
 
     if (isOnlineLobby) {
       const net = connectToTrysteroRoom(
@@ -77,9 +73,7 @@ export function registerMultiplayerLobbyScene() {
         selectedMode === "1v1" ? 2 : selectedMode === "2v2" ? 4 : ffaPlayerCount
       );
       net.fillWithBots = fillBotsInOnline;
-      net.onStartMatch = () => {
-        safeGoToArena();
-      };
+      net.onStartMatch = safeGoToArena;
     } else {
       setupSinglePlayerMatchConfig(selectedMode, ffaPlayerCount, playerTeam);
     }
@@ -88,14 +82,10 @@ export function registerMultiplayerLobbyScene() {
       sound.playUIClick();
       selectedMode = newMode;
       ffaPlayerCount = Math.max(3, Math.min(6, newFfaCount));
-      const maxP =
-        selectedMode === "1v1" ? 2 : selectedMode === "2v2" ? 4 : ffaPlayerCount;
-
+      const maxP = selectedMode === "1v1" ? 2 : selectedMode === "2v2" ? 4 : ffaPlayerCount;
       if (isOnlineLobby) {
         const net = getActiveMatchConfig();
-        if (net.isHost) {
-          setLobbyModeConfig(selectedMode, maxP, fillBotsInOnline);
-        }
+        if (net.isHost) setLobbyModeConfig(selectedMode, maxP, fillBotsInOnline);
       } else {
         setupSinglePlayerMatchConfig(selectedMode, ffaPlayerCount, playerTeam);
       }
@@ -105,7 +95,7 @@ export function registerMultiplayerLobbyScene() {
       sound.playUIClick();
       if (isOnlineLobby) {
         const net = getActiveMatchConfig();
-        net.onStartMatch = () => safeGoToArena();
+        net.onStartMatch = safeGoToArena;
         if (net.isHost) {
           net.fillWithBots = fillBotsInOnline;
           triggerOnlineMatchStart();
@@ -133,51 +123,33 @@ export function registerMultiplayerLobbyScene() {
       feedbackBanner = `PLAYER NAME UPDATED TO: ${saved}`;
     }
 
-    // Mode Selection Hotkeys (1 = 1v1, 2 = 2v2 Teams, 3 = Free-For-All 3-6P)
-    onKeyPress("1", () => {
-      if (showJoinCodeModal || showNameModal) return;
-      applyModeSelection("1v1", ffaPlayerCount);
-    });
-    onKeyPress("2", () => {
-      if (showJoinCodeModal || showNameModal) return;
-      applyModeSelection("2v2", ffaPlayerCount);
-    });
-    onKeyPress("3", () => {
-      if (showJoinCodeModal || showNameModal) return;
-      applyModeSelection("ffa", ffaPlayerCount);
-    });
+    // Mode keys (1, 2, 3)
+    MODES.forEach((m) =>
+      onKeyPress(m.key, () => {
+        if (!showJoinCodeModal && !showNameModal) applyModeSelection(m.id, ffaPlayerCount);
+      })
+    );
 
-    // Adjust Free-For-All player count (3, 4, 5, 6) with Left / Right arrows
+    // Left / Right arrows for FFA player count
     onKeyPress("left", () => {
-      if (showJoinCodeModal || showNameModal || selectedMode !== "ffa") return;
-      applyModeSelection("ffa", ffaPlayerCount - 1);
+      if (!showJoinCodeModal && !showNameModal && selectedMode === "ffa") applyModeSelection("ffa", ffaPlayerCount - 1);
     });
     onKeyPress("right", () => {
-      if (showJoinCodeModal || showNameModal || selectedMode !== "ffa") return;
-      applyModeSelection("ffa", ffaPlayerCount + 1);
+      if (!showJoinCodeModal && !showNameModal && selectedMode === "ffa") applyModeSelection("ffa", ffaPlayerCount + 1);
     });
 
-    // Open Custom Player Name Editor (`N` key)
     onKeyPress("n", () => {
-      if (showJoinCodeModal || showNameModal) return;
-      openNameEditor();
+      if (!showJoinCodeModal && !showNameModal) openNameEditor();
     });
 
-    // Toggle Team (Blue <-> Red) in 2v2 mode (`T` key)
     onKeyPress("t", () => {
-      if (showJoinCodeModal || showNameModal) return;
-      if (selectedMode === "2v2") {
-        sound.playUIClick();
-        playerTeam = playerTeam === "blue" ? "red" : "blue";
-        if (isOnlineLobby) {
-          toggleLocalPlayerTeam();
-        } else {
-          setupSinglePlayerMatchConfig(selectedMode, ffaPlayerCount, playerTeam);
-        }
-      }
+      if (showJoinCodeModal || showNameModal || selectedMode !== "2v2") return;
+      sound.playUIClick();
+      playerTeam = playerTeam === "blue" ? "red" : "blue";
+      if (isOnlineLobby) toggleLocalPlayerTeam();
+      else setupSinglePlayerMatchConfig(selectedMode, ffaPlayerCount, playerTeam);
     });
 
-    // Toggle AI Bot Fill in Online Mode (`B` key)
     onKeyPress("b", () => {
       if (!isOnlineLobby || showJoinCodeModal || showNameModal) return;
       const net = getActiveMatchConfig();
@@ -188,15 +160,12 @@ export function registerMultiplayerLobbyScene() {
       }
     });
 
-    // Copy 1-Click Shareable Invite Link (`C` key)
     onKeyPress("c", () => {
       if (!isOnlineLobby || showJoinCodeModal || showNameModal) return;
       sound.playUIClick();
-      const link = copyRoomInviteLink();
-      feedbackBanner = `INVITE LINK COPIED! (${link})`;
+      feedbackBanner = `INVITE LINK COPIED! (${copyRoomInviteLink()})`;
     });
 
-    // Open Join Room by 4-Digit Code Modal (`J` key)
     onKeyPress("j", () => {
       if (!isOnlineLobby || showNameModal) return;
       sound.playUIClick();
@@ -204,36 +173,24 @@ export function registerMultiplayerLobbyScene() {
       typedJoinCode = "";
     });
 
-    // Audio hotkeys (M for music, X for SFX)
     sound.registerAudioKeyBindings(() => !showNameModal && !showJoinCodeModal);
 
-    // Start Match (`Space` or `Enter`)
     onKeyPress("space", () => {
       if (showNameModal) {
-        if (typedPlayerName.length < 12) {
-          typedPlayerName += " ";
-        }
+        if (typedPlayerName.length < 12) typedPlayerName += " ";
         return;
       }
       if (!showJoinCodeModal) launchMatchFromLobby();
     });
 
     onKeyPress("enter", () => {
-      if (showNameModal) {
-        saveNameEditor();
-        return;
-      }
+      if (showNameModal) return saveNameEditor();
       if (showJoinCodeModal) {
         if (typedJoinCode.length >= 4) {
           sound.playUIClick();
           showJoinCodeModal = false;
-          const net = connectToTrysteroRoom(
-            typedJoinCode,
-            false,
-            selectedMode,
-            ffaPlayerCount
-          );
-          net.onStartMatch = () => safeGoToArena();
+          const net = connectToTrysteroRoom(typedJoinCode, false, selectedMode, ffaPlayerCount);
+          net.onStartMatch = safeGoToArena;
         }
       } else {
         launchMatchFromLobby();
@@ -254,54 +211,36 @@ export function registerMultiplayerLobbyScene() {
     });
 
     onKeyPress("backspace", () => {
-      if (showNameModal && typedPlayerName.length > 0) {
-        typedPlayerName = typedPlayerName.slice(0, -1);
-      } else if (showJoinCodeModal && typedJoinCode.length > 0) {
-        typedJoinCode = typedJoinCode.slice(0, -1);
-      }
+      if (showNameModal && typedPlayerName.length > 0) typedPlayerName = typedPlayerName.slice(0, -1);
+      else if (showJoinCodeModal && typedJoinCode.length > 0) typedJoinCode = typedJoinCode.slice(0, -1);
     });
 
-    // Keyboard character input for Name Modal (A-Z, 0-9) & Join Code Modal (0-9)
     onCharInput((ch) => {
       if (showNameModal) {
         const cleanCh = ch.replace(/[^a-zA-Z0-9 _-]/g, "").toUpperCase();
-        if (cleanCh && typedPlayerName.length < 12) {
-          typedPlayerName += cleanCh;
-        }
-      } else if (showJoinCodeModal) {
-        if (/^[0-9]$/.test(ch) && typedJoinCode.length < 4) {
-          typedJoinCode += ch;
-          if (typedJoinCode.length === 4) {
-            showJoinCodeModal = false;
-            const net = connectToTrysteroRoom(
-              typedJoinCode,
-              false,
-              selectedMode,
-              ffaPlayerCount
-            );
-            net.onStartMatch = () => safeGoToArena();
-          }
+        if (cleanCh && typedPlayerName.length < 12) typedPlayerName += cleanCh;
+      } else if (showJoinCodeModal && /^[0-9]$/.test(ch) && typedJoinCode.length < 4) {
+        typedJoinCode += ch;
+        if (typedJoinCode.length === 4) {
+          showJoinCodeModal = false;
+          const net = connectToTrysteroRoom(typedJoinCode, false, selectedMode, ffaPlayerCount);
+          net.onStartMatch = safeGoToArena;
         }
       }
     });
 
-    // Mouse Click Support
+    const inBox = (x, y, x1, y1, x2, y2) => x >= x1 && x <= x2 && y >= y1 && y <= y2;
+
     onMousePress("left", () => {
       const m = mousePos();
       const cx = GAME_CONFIG.WIDTH * 0.5;
       const cy = GAME_CONFIG.HEIGHT * 0.5;
 
-      // Audio Mute / Unmute Buttons at Top-Right
       if (sound.handleAudioClick(m.x, m.y)) return;
 
       if (showNameModal) {
-        // Save Name button
-        if (m.x >= cx - 150 && m.x <= cx - 10 && m.y >= cy + 72 && m.y <= cy + 108) {
-          saveNameEditor();
-          return;
-        }
-        // Cancel button
-        if (m.x >= cx + 10 && m.x <= cx + 150 && m.y >= cy + 72 && m.y <= cy + 108) {
+        if (inBox(m.x, m.y, cx - 150, cy + 72, cx - 10, cy + 108)) return saveNameEditor();
+        if (inBox(m.x, m.y, cx + 10, cy + 72, cx + 150, cy + 108)) {
           showNameModal = false;
           return;
         }
@@ -309,74 +248,52 @@ export function registerMultiplayerLobbyScene() {
       }
 
       if (showJoinCodeModal) {
-        if (m.x >= cx - 75 && m.x <= cx + 75 && m.y >= cy + 82 && m.y <= cy + 116) {
+        if (inBox(m.x, m.y, cx - 75, cy + 82, cx + 75, cy + 116)) {
           showJoinCodeModal = false;
           typedJoinCode = "";
         }
         return;
       }
 
-      // 0. Click Custom Player Name Box (top right of header)
-      if (m.x >= cx + 95 && m.x <= cx + 325 && m.y >= cy - 210 && m.y <= cy - 180) {
-        openNameEditor();
+      // Name editor pill
+      if (inBox(m.x, m.y, cx + 95, cy - 210, cx + 325, cy - 180)) return openNameEditor();
+
+      // Mode tabs
+      for (const mode of MODES) {
+        if (inBox(m.x, m.y, cx + mode.xOff, cy - 128, cx + mode.xOff + 200, cy - 72)) {
+          return applyModeSelection(mode.id, ffaPlayerCount);
+        }
+      }
+
+      // FFA count buttons
+      if (selectedMode === "ffa" && inBox(m.x, m.y, cx - 90, cy - 62, cx - 90 + 4 * 82, cy - 34)) {
+        for (let c = 3; c <= 6; c++) {
+          const bx = cx - 90 + (c - 3) * 82;
+          if (inBox(m.x, m.y, bx, cy - 62, bx + 72, cy - 34)) return applyModeSelection("ffa", c);
+        }
+      }
+
+      // Online Copy Link & Join Code
+      if (isOnlineLobby && inBox(m.x, m.y, cx + 15, cy - 176, cx + 165, cy - 142)) {
+        feedbackBanner = `INVITE LINK COPIED! (${copyRoomInviteLink()})`;
+        return;
+      }
+      if (isOnlineLobby && inBox(m.x, m.y, cx + 175, cy - 176, cx + 320, cy - 142)) {
+        showJoinCodeModal = true;
+        typedJoinCode = "";
         return;
       }
 
-      // 1. Mode Selection Tabs (1v1, 2v2 Teams, Free-For-All 3-6P)
-      if (m.y >= cy - 128 && m.y <= cy - 72) {
-        if (m.x >= cx - 310 && m.x <= cx - 110) {
-          applyModeSelection("1v1", ffaPlayerCount);
-          return;
-        }
-        if (m.x >= cx - 95 && m.x <= cx + 105) {
-          applyModeSelection("2v2", ffaPlayerCount);
-          return;
-        }
-        if (m.x >= cx + 120 && m.x <= cx + 320) {
-          applyModeSelection("ffa", ffaPlayerCount);
-          return;
-        }
-      }
+      // Start match
+      if (inBox(m.x, m.y, cx - 155, cy + 148, cx + 165, cy + 198)) return launchMatchFromLobby();
 
-      // 2. FFA Fighter Count Selector Buttons (3P, 4P, 5P, 6P) when in FFA mode
-      if (selectedMode === "ffa" && m.y >= cy - 62 && m.y <= cy - 34) {
-        for (let count = 3; count <= 6; count++) {
-          const bx = cx - 90 + (count - 3) * 82;
-          if (m.x >= bx && m.x <= bx + 72) {
-            applyModeSelection("ffa", count);
-            return;
-          }
-        }
-      }
-
-      // 3. Online Copy Link & Join By Code Buttons
-      if (isOnlineLobby && m.y >= cy - 176 && m.y <= cy - 142) {
-        if (m.x >= cx + 15 && m.x <= cx + 165) {
-          const link = copyRoomInviteLink();
-          feedbackBanner = `INVITE LINK COPIED! (${link})`;
-          return;
-        }
-        if (m.x >= cx + 175 && m.x <= cx + 320) {
-          showJoinCodeModal = true;
-          typedJoinCode = "";
-          return;
-        }
-      }
-
-      // 4. START MATCH Button
-      if (m.x >= cx - 155 && m.x <= cx + 165 && m.y >= cy + 148 && m.y <= cy + 198) {
-        launchMatchFromLobby();
-        return;
-      }
-
-      // 5. BACK TO MENU Button
-      if (m.x >= cx - 320 && m.x <= cx - 190 && m.y >= cy + 150 && m.y <= cy + 196) {
+      // Back to menu
+      if (inBox(m.x, m.y, cx - 320, cy + 150, cx - 190, cy + 196)) {
         leaveMultiplayerRoom();
         go("menu");
       }
     });
 
-    // Render the Lobby UI
     add([
       fixed(),
       z(1000),
@@ -389,7 +306,7 @@ export function registerMultiplayerLobbyScene() {
           const slots = net.slots || [];
           const myPlayerName = getLocalPlayerName();
 
-          // Dark backdrop
+          // Dark backdrop & audio HUD
           drawRect({
             pos: vec2(0, 0),
             width: GAME_CONFIG.WIDTH,
@@ -397,11 +314,9 @@ export function registerMultiplayerLobbyScene() {
             color: rgb(8, 12, 24),
             opacity: 0.68,
           });
-
-          // Audio HUD (Separate Music & SFX Buttons at Top-Right)
           sound.drawAudioHUD();
 
-          // Main Lobby Card
+          // Main Card
           drawRect({
             pos: vec2(cx - 345, cy - 220),
             width: 690,
@@ -409,23 +324,18 @@ export function registerMultiplayerLobbyScene() {
             radius: 16,
             color: rgb(12, 18, 34),
             opacity: 0.95,
-            outline: {
-              width: 3,
-              color: isOnlineLobby ? rgb(75, 245, 185) : rgb(75, 195, 255),
-            },
+            outline: { width: 3, color: isOnlineLobby ? rgb(75, 245, 185) : rgb(75, 195, 255) },
           });
 
           // Header Title
           drawText({
-            text: isOnlineLobby
-              ? "ONLINE P2P ROOM LOBBY (TRYSTERO)"
-              : "SINGLE PLAYER SETUP (VS AI BOTS)",
+            text: isOnlineLobby ? "ONLINE P2P ROOM LOBBY (TRYSTERO)" : "SINGLE PLAYER SETUP (VS AI BOTS)",
             pos: vec2(cx - 315, cy - 204),
             size: 15,
             color: isOnlineLobby ? rgb(95, 255, 195) : rgb(95, 230, 255),
           });
 
-          // Custom Player Name Badge (Top Right — Press N or Click to Edit!)
+          // Player Name Badge
           drawRect({
             pos: vec2(cx + 95, cy - 210),
             width: 225,
@@ -441,7 +351,7 @@ export function registerMultiplayerLobbyScene() {
             color: rgb(255, 235, 115),
           });
 
-          // Online Room Code Bar + Copy Link + Join Code Buttons
+          // Online Room Code Bar & Buttons
           if (isOnlineLobby) {
             drawRect({
               pos: vec2(cx - 315, cy - 176),
@@ -458,7 +368,6 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(255, 235, 95),
             });
 
-            // Copy Invite Link Button (C)
             drawRect({
               pos: vec2(cx + 15, cy - 176),
               width: 150,
@@ -467,14 +376,8 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(24, 95, 78),
               outline: { width: 1.5, color: rgb(115, 255, 205) },
             });
-            drawText({
-              text: "COPY LINK (KEY C)",
-              pos: vec2(cx + 32, cy - 165),
-              size: 11,
-              color: rgb(235, 255, 245),
-            });
+            drawText({ text: "COPY LINK (KEY C)", pos: vec2(cx + 32, cy - 165), size: 11, color: rgb(235, 255, 245) });
 
-            // Join By Code Button (J)
             drawRect({
               pos: vec2(cx + 175, cy - 176),
               width: 145,
@@ -483,12 +386,7 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(38, 52, 88),
               outline: { width: 1.5, color: rgb(145, 205, 255) },
             });
-            drawText({
-              text: "JOIN CODE (KEY J)",
-              pos: vec2(cx + 190, cy - 165),
-              size: 11,
-              color: rgb(225, 240, 255),
-            });
+            drawText({ text: "JOIN CODE (KEY J)", pos: vec2(cx + 190, cy - 165), size: 11, color: rgb(225, 240, 255) });
           } else {
             drawText({
               text: "PRESS KEY N ANYTIME TO CUSTOMIZE YOUR PLAYER NAME! CHOOSE MODE BELOW:",
@@ -498,35 +396,11 @@ export function registerMultiplayerLobbyScene() {
             });
           }
 
-          // 3 Mode Cards: 1 = 1v1 Duel, 2 = 2v2 Teams, 3 = Free-For-All (3-6P)
-          const modes = [
-            {
-              id: "1v1",
-              key: "1",
-              title: "1 vs 1 DUEL",
-              sub: "2 Fighters Head-to-Head",
-              x: cx - 310,
-            },
-            {
-              id: "2v2",
-              key: "2",
-              title: "2 vs 2 TEAMS",
-              sub: "Team Blue vs Team Red",
-              x: cx - 95,
-            },
-            {
-              id: "ffa",
-              key: "3",
-              title: "FREE-FOR-ALL",
-              sub: "1v1v1 up to 6 Players!",
-              x: cx + 120,
-            },
-          ];
-
-          for (const m of modes) {
+          // Mode Selection Tabs
+          for (const m of MODES) {
             const isSel = activeMode === m.id;
             drawRect({
-              pos: vec2(m.x, cy - 128),
+              pos: vec2(cx + m.xOff, cy - 128),
               width: 200,
               height: 54,
               radius: 10,
@@ -538,19 +412,19 @@ export function registerMultiplayerLobbyScene() {
             });
             drawText({
               text: `KEY ${m.key} : ${m.title}`,
-              pos: vec2(m.x + 14, cy - 116),
+              pos: vec2(cx + m.xOff + 14, cy - 116),
               size: 13,
               color: isSel ? rgb(255, 255, 255) : rgb(185, 205, 235),
             });
             drawText({
               text: m.sub,
-              pos: vec2(m.x + 14, cy - 95),
+              pos: vec2(cx + m.xOff + 14, cy - 95),
               size: 10,
               color: isSel ? rgb(205, 245, 255) : rgb(142, 162, 195),
             });
           }
 
-          // Mode-specific Sub-Options Bar (FFA Player Count 3..6 OR 2v2 Team Switcher)
+          // Sub-options bar
           if (activeMode === "ffa") {
             drawText({
               text: "FFA FIGHTERS (ARROWS / CLICK):",
@@ -558,26 +432,18 @@ export function registerMultiplayerLobbyScene() {
               size: 11,
               color: rgb(255, 225, 115),
             });
-            for (let count = 3; count <= 6; count++) {
-              const bx = cx - 90 + (count - 3) * 82;
-              const isCnt = net.maxPlayers === count;
+            for (let c = 3; c <= 6; c++) {
+              const bx = cx - 90 + (c - 3) * 82;
+              const isCnt = net.maxPlayers === c;
               drawRect({
                 pos: vec2(bx, cy - 61),
                 width: 72,
                 height: 26,
                 radius: 6,
                 color: isCnt ? rgb(215, 135, 24) : rgb(24, 34, 56),
-                outline: {
-                  width: 1.5,
-                  color: isCnt ? rgb(255, 235, 115) : rgb(85, 105, 145),
-                },
+                outline: { width: 1.5, color: isCnt ? rgb(255, 235, 115) : rgb(85, 105, 145) },
               });
-              drawText({
-                text: `${count}P FFA`,
-                pos: vec2(bx + 12, cy - 53),
-                size: 11,
-                color: rgb(255, 255, 255),
-              });
+              drawText({ text: `${c}P FFA`, pos: vec2(bx + 12, cy - 53), size: 11, color: rgb(255, 255, 255) });
             }
           } else if (activeMode === "2v2") {
             drawText({
@@ -595,22 +461,14 @@ export function registerMultiplayerLobbyScene() {
             });
           }
 
-          // 6 Fighter Roster Slots Grid (2 rows x 3 columns)
-          for (let i = 0; i < slots.length; i++) {
-            const s = slots[i];
+          // Fighter Slots Grid
+          slots.forEach((s, i) => {
             const roster = FIGHTER_ROSTER[i] || FIGHTER_ROSTER[0];
-            const col = i % 3;
-            const row = Math.floor(i / 3);
-            const sx = cx - 310 + col * 212;
-            const sy = cy - 22 + row * 78;
-
+            const sx = cx - 310 + (i % 3) * 212;
+            const sy = cy - 22 + Math.floor(i / 3) * 78;
             const isBlue = s.team === "blue";
             const isRed = s.team === "red";
-            const borderCol = isBlue
-              ? rgb(45, 175, 255)
-              : isRed
-              ? rgb(255, 75, 75)
-              : rgb(...roster.uiColor);
+            const borderCol = isBlue ? rgb(45, 175, 255) : isRed ? rgb(255, 75, 75) : rgb(...roster.uiColor);
 
             drawRect({
               pos: vec2(sx, sy),
@@ -620,64 +478,39 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(18, 26, 46),
               outline: { width: 2, color: borderCol },
             });
+            drawCircle({ pos: vec2(sx + 20, sy + 20), radius: 9, color: rgb(...roster.ringColor) });
 
-            // Fighter Color Dot
-            drawCircle({
-              pos: vec2(sx + 20, sy + 20),
-              radius: 9,
-              color: rgb(...roster.ringColor),
-            });
-
-            const slotPlayerName =
-              s.playerName || (s.peerId ? `PLAYER ${i + 1}` : `BOT ${roster.name}`);
-
-            drawText({
-              text: `P${i + 1}: ${slotPlayerName}`,
-              pos: vec2(sx + 35, sy + 13),
-              size: 11.5,
-              color: rgb(255, 255, 255),
-            });
+            const slotName = s.playerName || (s.peerId ? `PLAYER ${i + 1}` : `BOT ${roster.name}`);
+            drawText({ text: `P${i + 1}: ${slotName}`, pos: vec2(sx + 35, sy + 13), size: 11.5, color: rgb(255, 255, 255) });
 
             const roleLabel = s.peerId
               ? `HUMAN (${roster.name})`
               : isOnlineLobby && !net.fillWithBots
               ? `OPEN (${roster.name})`
               : `AI BOT (${roster.name})`;
-
             drawText({
               text: roleLabel,
               pos: vec2(sx + 14, sy + 38),
               size: 10,
               color: s.peerId ? rgb(115, 255, 185) : rgb(...roster.uiColor),
             });
-
-            const teamBadge = isBlue
-              ? "BLUE"
-              : isRed
-              ? "RED"
-              : "SOLO";
             drawText({
-              text: teamBadge,
+              text: isBlue ? "BLUE" : isRed ? "RED" : "SOLO",
               pos: vec2(sx + 146, sy + 38),
               size: 9.5,
               color: borderCol,
             });
-          }
+          });
 
-          // Status / Online Bot Fill Info Line
+          // Status Msg
           const statusMsg =
             feedbackBanner ||
             (isOnlineLobby
               ? `${net.statusText}   |   KEY B : AI BOT FILL (${net.fillWithBots ? "ON" : "OFF"})`
               : "READY TO LAUNCH! PRESS KEY N TO SET YOUR PLAYER NAME OR SPACE TO START");
-          drawText({
-            text: statusMsg,
-            pos: vec2(cx - 310, cy + 132),
-            size: 10.5,
-            color: rgb(255, 230, 115),
-          });
+          drawText({ text: statusMsg, pos: vec2(cx - 310, cy + 132), size: 10.5, color: rgb(255, 230, 115) });
 
-          // BACK Button (ESC)
+          // ESC : MENU Button
           drawRect({
             pos: vec2(cx - 310, cy + 154),
             width: 120,
@@ -686,14 +519,9 @@ export function registerMultiplayerLobbyScene() {
             color: rgb(36, 44, 68),
             outline: { width: 1.5, color: rgb(145, 165, 205) },
           });
-          drawText({
-            text: "ESC : MENU",
-            pos: vec2(cx - 288, cy + 168),
-            size: 12,
-            color: rgb(225, 235, 255),
-          });
+          drawText({ text: "ESC : MENU", pos: vec2(cx - 288, cy + 168), size: 12, color: rgb(225, 235, 255) });
 
-          // START MATCH Button (SPACE / ENTER)
+          // START MATCH Button
           drawRect({
             pos: vec2(cx - 155, cy + 150),
             width: 320,
@@ -703,38 +531,30 @@ export function registerMultiplayerLobbyScene() {
             outline: { width: 2.5, color: rgb(135, 255, 205) },
           });
           drawText({
-            text: isOnlineLobby
-              ? "START ONLINE MATCH (SPACE / ENTER)"
-              : "START BATTLE (SPACE / ENTER / CLICK)",
+            text: isOnlineLobby ? "START ONLINE MATCH (SPACE / ENTER)" : "START BATTLE (SPACE / ENTER / CLICK)",
             pos: vec2(cx - 134, cy + 166),
             size: 13.5,
             color: rgb(255, 255, 255),
           });
 
-          // Modal for Editing Custom Player Name (`N` key or click Name Box)
-          if (showNameModal) {
+          // Modal Box Helper
+          const drawModalCard = (w, h, outlineCol, title, sub) => {
             drawRect({
-              pos: vec2(cx - 215, cy - 115),
-              width: 430,
-              height: 245,
+              pos: vec2(cx - w * 0.5, cy - h * 0.5),
+              width: w,
+              height: h,
               radius: 14,
               color: rgb(10, 16, 30),
               opacity: 0.98,
-              outline: { width: 3, color: rgb(255, 220, 85) },
+              outline: { width: 3, color: outlineCol },
             });
-            drawText({
-              text: "SET YOUR CUSTOM PLAYER NAME",
-              pos: vec2(cx - 142, cy - 86),
-              size: 15,
-              color: rgb(255, 230, 95),
-            });
-            drawText({
-              text: "Type up to 12 letters/numbers and press ENTER to save:",
-              pos: vec2(cx - 165, cy - 56),
-              size: 11,
-              color: rgb(205, 225, 248),
-            });
+            drawText({ text: title, pos: vec2(cx - w * 0.5 + 40, cy - h * 0.5 + 28), size: 14.5, color: outlineCol });
+            drawText({ text: sub, pos: vec2(cx - w * 0.5 + 40, cy - h * 0.5 + 56), size: 11, color: rgb(205, 225, 248) });
+          };
 
+          // Name Modal
+          if (showNameModal) {
+            drawModalCard(430, 245, rgb(255, 220, 85), "SET YOUR CUSTOM PLAYER NAME", "Type up to 12 letters/numbers and press ENTER to save:");
             drawRect({
               pos: vec2(cx - 165, cy - 22),
               width: 330,
@@ -743,16 +563,9 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(22, 32, 56),
               outline: { width: 2, color: rgb(115, 245, 255) },
             });
-
             const cursorBlink = Math.floor(time() * 2.5) % 2 === 0 ? "_" : "";
-            drawText({
-              text: `${typedPlayerName}${cursorBlink}`,
-              pos: vec2(cx - 145, cy - 7),
-              size: 18,
-              color: rgb(135, 255, 215),
-            });
+            drawText({ text: `${typedPlayerName}${cursorBlink}`, pos: vec2(cx - 145, cy - 7), size: 18, color: rgb(135, 255, 215) });
 
-            // Save Button
             drawRect({
               pos: vec2(cx - 150, cy + 72),
               width: 140,
@@ -761,14 +574,8 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(28, 155, 105),
               outline: { width: 1.5, color: rgb(135, 255, 205) },
             });
-            drawText({
-              text: "ENTER : SAVE",
-              pos: vec2(cx - 122, cy + 83),
-              size: 11.5,
-              color: rgb(255, 255, 255),
-            });
+            drawText({ text: "ENTER : SAVE", pos: vec2(cx - 122, cy + 83), size: 11.5, color: rgb(255, 255, 255) });
 
-            // Cancel Button
             drawRect({
               pos: vec2(cx + 10, cy + 72),
               width: 140,
@@ -777,63 +584,27 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(42, 48, 72),
               outline: { width: 1.5, color: rgb(145, 165, 205) },
             });
-            drawText({
-              text: "ESC : CANCEL",
-              pos: vec2(cx + 36, cy + 83),
-              size: 11.5,
-              color: rgb(225, 235, 255),
-            });
+            drawText({ text: "ESC : CANCEL", pos: vec2(cx + 36, cy + 83), size: 11.5, color: rgb(225, 235, 255) });
           }
 
-          // Modal for Joining a Friend's 4-Digit Room Code (`J` key)
+          // Join Room Modal
           if (showJoinCodeModal) {
-            drawRect({
-              pos: vec2(cx - 210, cy - 110),
-              width: 420,
-              height: 240,
-              radius: 14,
-              color: rgb(10, 16, 30),
-              opacity: 0.98,
-              outline: { width: 3, color: rgb(95, 245, 195) },
-            });
-            drawText({
-              text: "ENTER FRIEND'S 4-DIGIT ROOM CODE",
-              pos: vec2(cx - 152, cy - 82),
-              size: 14,
-              color: rgb(95, 255, 195),
-            });
-            drawText({
-              text: "Type the 4 digits shown on the Host's Lobby screen:",
-              pos: vec2(cx - 158, cy - 54),
-              size: 11,
-              color: rgb(205, 225, 248),
-            });
-
+            drawModalCard(420, 240, rgb(95, 245, 195), "ENTER FRIEND'S 4-DIGIT ROOM CODE", "Type the 4 digits shown on the Host's Lobby screen:");
             for (let i = 0; i < 4; i++) {
               const bx = cx - 102 + i * 54;
-              const by = cy - 22;
               const hasChar = i < typedJoinCode.length;
               drawRect({
-                pos: vec2(bx, by),
+                pos: vec2(bx, cy - 22),
                 width: 42,
                 height: 48,
                 radius: 8,
                 color: rgb(22, 32, 56),
-                outline: {
-                  width: 2,
-                  color: hasChar ? rgb(95, 255, 195) : rgb(85, 115, 165),
-                },
+                outline: { width: 2, color: hasChar ? rgb(95, 255, 195) : rgb(85, 115, 165) },
               });
               if (hasChar) {
-                drawText({
-                  text: typedJoinCode[i],
-                  pos: vec2(bx + 14, by + 13),
-                  size: 20,
-                  color: rgb(125, 255, 205),
-                });
+                drawText({ text: typedJoinCode[i], pos: vec2(bx + 14, cy - 9), size: 20, color: rgb(125, 255, 205) });
               }
             }
-
             drawRect({
               pos: vec2(cx - 75, cy + 82),
               width: 150,
@@ -842,12 +613,7 @@ export function registerMultiplayerLobbyScene() {
               color: rgb(42, 48, 72),
               outline: { width: 1.5, color: rgb(145, 165, 205) },
             });
-            drawText({
-              text: "ESC : CANCEL",
-              pos: vec2(cx - 44, cy + 92),
-              size: 11.5,
-              color: rgb(225, 235, 255),
-            });
+            drawText({ text: "ESC : CANCEL", pos: vec2(cx - 44, cy + 92), size: 11.5, color: rgb(225, 235, 255) });
           }
         },
       },

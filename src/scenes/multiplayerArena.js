@@ -548,24 +548,13 @@ export function registerMultiplayerArenaScene() {
     }
 
     // Rematch (`Space` / `Enter`) or Return to Menu (`Escape`)
-    onKeyPress("space", () => {
-      if (isMatchOver) {
-        if (cleanupExplosionListener) cleanupExplosionListener();
-        if (isOnline && net.isHost && net.sendResult) {
-          net.sendResult({ type: "REMATCH" });
-        }
-        go("multiplayerArena");
-      }
-    });
-    onKeyPress("enter", () => {
-      if (isMatchOver) {
-        if (cleanupExplosionListener) cleanupExplosionListener();
-        if (isOnline && net.isHost && net.sendResult) {
-          net.sendResult({ type: "REMATCH" });
-        }
-        go("multiplayerArena");
-      }
-    });
+    const triggerRematch = () => {
+      if (!isMatchOver) return;
+      if (cleanupExplosionListener) cleanupExplosionListener();
+      if (isOnline && net.isHost && net.sendResult) net.sendResult({ type: "REMATCH" });
+      go("multiplayerArena");
+    };
+    ["space", "enter"].forEach((k) => onKeyPress(k, triggerRematch));
     onKeyPress("escape", () => {
       if (cleanupExplosionListener) cleanupExplosionListener();
       leaveMultiplayerRoom();
