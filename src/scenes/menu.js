@@ -477,7 +477,7 @@ export function registerMenuScene() {
             },
           });
           drawText({
-            text: "EDIT [N]",
+            text: "EDIT (N)",
             pos: vec2(214, 29),
             size: 9.5,
             color: hoverProfile > 0.5 ? rgb(255, 235, 130) : rgb(205, 225, 255),
@@ -557,12 +557,12 @@ export function registerMenuScene() {
             },
           });
           drawText({
-            text: "2 . 5 D   A R E N A   B R A W L",
+            text: "2.5D ARENA BRAWL",
             pos: vec2(cx - subBadgeW * 0.5, heroY + 33),
             width: subBadgeW,
             align: "center",
-            size: 10.5,
-            color: rgb(147, 222, 255),
+            size: 11.5,
+            color: rgb(155, 230, 255),
             opacity: uiAlpha,
           });
 
@@ -825,11 +825,11 @@ export function registerMenuScene() {
             : "🔒 DEVELOPER TEST LAB  (PRESS F2 / CLICK)";
           drawText({
             text: devTitle,
-            pos: vec2(devBtnX, devBtnY + 8),
+            pos: vec2(devBtnX, devBtnY + 9),
             width: devBtnW,
             align: "center",
-            size: 10.5,
-            color: devUnlocked ? rgb(110, 255, 180) : rgb(160, 180, 210),
+            size: 11,
+            color: devUnlocked ? rgb(110, 255, 180) : rgb(185, 205, 235),
           });
 
           // G. Footer Helper Strip: Desktop Controls & Version Info
